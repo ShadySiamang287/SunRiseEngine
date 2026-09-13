@@ -15,7 +15,7 @@ namespace SUN{
             mWindowPtr->Init();
 
             mGraphicsContextPtr = std::make_unique<GraphicsContext>();
-            mGraphicsContextPtr->Init();
+            mGraphicsContextPtr->Init(mWindowPtr.get());
         }
     
         ~Application(){

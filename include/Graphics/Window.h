@@ -3,6 +3,8 @@
 #include <GLFW/glfw3native.h>
 
 namespace SUN{
+    class GraphicsContext;
+
     class Window{
     public:
         void Init();
@@ -11,11 +13,12 @@ namespace SUN{
         void PollEvents();
 
         bool ShouldClose();
-        HWND GetWin32Window();
 
     private:
         GLFWwindow* mWindowPtr {nullptr};
         uint32_t mWidth = 800;
         uint32_t mHeight = 600;
+
+        friend GraphicsContext;
     };
 }

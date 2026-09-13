@@ -22,7 +22,3 @@ void Window::PollEvents(){
 bool Window::ShouldClose(){
     return glfwWindowShouldClose(mWindowPtr);
 }
-
-HWND Window::GetWin32Window() {
-    return glfwGetWin32Window(mWindowPtr);
-}

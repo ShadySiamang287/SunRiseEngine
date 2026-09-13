@@ -1,5 +1,10 @@
 #include "Graphics/GraphicsContext.h"
+#include "Graphics/Window.h"
 #include "Logger.h"
+
+#define VK_USE_PLATFORM_WIN32_KHR
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 #include <vulkan/vulkan_to_string.hpp>
 
@@ -19,10 +24,12 @@ constexpr bool enableValidationLayers = true;
 
 using namespace SUN;
 
-void GraphicsContext::Init(){
+void GraphicsContext::Init(const Window* window){
     CreateInstance();
     SetupDebugMessenger();
+    CreateSurface(window);
     PickPhysicalDevice();
+    CreateLogicalDevice();
 }
 
 void GraphicsContext::Shutdown(){
@@ -108,6 +115,14 @@ void GraphicsContext::SetupDebugMessenger() {
     mDebugMessenger = mInstance.createDebugUtilsMessengerEXT( debugUtilsMessengerCreateInfoEXT );
 }
 
+void GraphicsContext::CreateSurface(const Window* window) {
+    VkSurfaceKHR surface;
+    if (glfwCreateWindowSurface(*mInstance, window->mWindowPtr, nullptr, &surface) != 0) {
+        throw std::runtime_error("Failed to create window surface");
+    }
+    mSurface = vk::raii::SurfaceKHR(mInstance, surface);
+}
+
 void GraphicsContext::PickPhysicalDevice() {
     std::vector<vk::raii::PhysicalDevice> physicalDevices = mInstance.enumeratePhysicalDevices();
     auto const devIter = std::ranges::find_if( physicalDevices, [&]( auto const & physicalDevice ) { return isDeviceSuitable( physicalDevice ); } );
@@ -154,6 +169,58 @@ bool GraphicsContext::isDeviceSuitable(vk::raii::PhysicalDevice const & physical
     return supportsVulkan13 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
 }
 
+void GraphicsContext::CreateLogicalDevice(){
+    std::vector<vk::QueueFamilyProperties> queueFamilyProperties = mPhysicalDevice.getQueueFamilyProperties();
+
+    uint32_t queueIndex = ~0;
+    for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
+    {
+        if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
+            mPhysicalDevice.getSurfaceSupportKHR(qfpIndex, *mSurface))
+        {
+            // found a queue family that supports both graphics and present
+            queueIndex = qfpIndex;
+            break;
+        }
+    }
+    if (queueIndex == ~0)
+    {
+        throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
+    }
+
+    vk::StructureChain<vk::PhysicalDeviceFeatures2,
+                    vk::PhysicalDeviceVulkan11Features,
+                    vk::PhysicalDeviceVulkan12Features,
+                    vk::PhysicalDeviceVulkan13Features,
+                    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+        featureChain = {
+            {},                                    // vk::PhysicalDeviceFeatures2
+            {.shaderDrawParameters = true},        // vk::PhysicalDeviceVulkan11Features
+            {
+                .shaderSampledImageArrayNonUniformIndexing = true,
+                .descriptorBindingPartiallyBound = true,
+                .descriptorBindingVariableDescriptorCount = true,
+                .runtimeDescriptorArray = true
+            },                                     
+            {
+                .synchronization2 = true,
+                .dynamicRendering = true,
+            },            // vk::PhysicalDeviceVulkan13Features
+            {.extendedDynamicState = true}         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+        };
+    
+    float                     queuePriority = 0.5f;
+    vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
+    vk::DeviceCreateInfo      deviceCreateInfo{.pNext                   = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+                                               .queueCreateInfoCount    = 1,
+                                               .pQueueCreateInfos       = &deviceQueueCreateInfo,
+                                               .enabledExtensionCount   = static_cast<uint32_t>(requiredDeviceExtension.size()),
+                                               .ppEnabledExtensionNames = requiredDeviceExtension.data()}; 
+
+    mDevice = vk::raii::Device(mPhysicalDevice, deviceCreateInfo);
+    mGraphicsQueue = vk::raii::Queue(mDevice, queueIndex, 0);
+}
+
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,
                                                       vk::DebugUtilsMessageTypeFlagsEXT              type,
                                                       const vk::DebugUtilsMessengerCallbackDataEXT * pCallbackData,
@@ -161,7 +228,7 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSever
 {
     switch (severity) {
         case vk::DebugUtilsMessageSeverityFlagBitsEXT::eError:
-            Logger::Log(Logger::ERROR, " - {}, validation layer: {}, message name: {}, message: {}",pCallbackData->messageIdNumber,  vk::to_string(type), pCallbackData->pMessageIdName, pCallbackData->pMessage);
+            Logger::Log(Logger::ERR, " - {}, validation layer: {}, message name: {}, message: {}",pCallbackData->messageIdNumber,  vk::to_string(type), pCallbackData->pMessageIdName, pCallbackData->pMessage);
             break;
         case vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning:
             Logger::Log(Logger::WARNING, " - {}, validation layer: {}, message name: {}, message: {}",pCallbackData->messageIdNumber,  vk::to_string(type), pCallbackData->pMessageIdName, pCallbackData->pMessage);

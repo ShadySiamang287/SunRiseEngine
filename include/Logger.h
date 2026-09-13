@@ -24,7 +24,7 @@ namespace SUN{
         enum Severity{
             LOG, ///< <span style="color:#4fc3f7;">■</span> for general logging
             WARNING, ///< <span style="color:#fff176;">■</span> for warnings
-            ERROR, ///< <span style="color:#ef9a9a;">■</span> for errors
+            ERR, ///< <span style="color:#ef9a9a;">■</span> for errors
             SUCCESS, ///< <span style="color:#a5d6a7;">■</span> for success
         };
 
@@ -123,7 +123,7 @@ namespace SUN{
             }
 
             switch (severity){
-            case Severity::ERROR:
+            case Severity::ERR:
                 colour = ERROR_TEXT;
                 severityText = "ERROR";
                 break;

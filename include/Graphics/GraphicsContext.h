@@ -3,11 +3,13 @@
 #include <vulkan/vulkan_raii.hpp>
 
 namespace SUN{
+    class Window;
+
     class GraphicsContext{
     public:
         GraphicsContext() {}
 
-        void Init();
+        void Init(const Window* window);
         void Shutdown();
 
     private:
@@ -16,14 +18,20 @@ namespace SUN{
 
         void SetupDebugMessenger();
 
-        void PickPhysicalDevice();
+        void CreateSurface(const Window* window);
 
+        void PickPhysicalDevice();
         bool isDeviceSuitable(vk::raii::PhysicalDevice const & physicalDevice);
+
+        void CreateLogicalDevice();
+
 
         vk::raii::Context mContext;
         vk::raii::Instance mInstance = nullptr;
         vk::raii::PhysicalDevice mPhysicalDevice = nullptr;
         vk::raii::Device mDevice = nullptr;
+        vk::raii::Queue mGraphicsQueue = nullptr;
+        vk::raii::SurfaceKHR mSurface = nullptr;
 
         vk::raii::DebugUtilsMessengerEXT mDebugMessenger = nullptr;
     };
