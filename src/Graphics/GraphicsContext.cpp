@@ -228,7 +228,7 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSever
 {
     switch (severity) {
         case vk::DebugUtilsMessageSeverityFlagBitsEXT::eError:
-            Logger::Log(Logger::ERR, " - {}, validation layer: {}, message name: {}, message: {}",pCallbackData->messageIdNumber,  vk::to_string(type), pCallbackData->pMessageIdName, pCallbackData->pMessage);
+            Logger::Log(Logger::ERROR, " - {}, validation layer: {}, message name: {}, message: {}",pCallbackData->messageIdNumber,  vk::to_string(type), pCallbackData->pMessageIdName, pCallbackData->pMessage);
             break;
         case vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning:
             Logger::Log(Logger::WARNING, " - {}, validation layer: {}, message name: {}, message: {}",pCallbackData->messageIdNumber,  vk::to_string(type), pCallbackData->pMessageIdName, pCallbackData->pMessage);
