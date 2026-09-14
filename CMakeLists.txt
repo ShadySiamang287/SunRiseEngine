@@ -11,6 +11,8 @@ include(FetchContent)
 set(SOURCES 
     src/Graphics/Window.cpp
     src/Graphics/GraphicsContext.cpp
+    src/Graphics/ResourceFactory.cpp
+    src/Graphics/ShaderCache.cpp
 )
 
 set(HEADERS

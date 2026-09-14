@@ -9,6 +9,13 @@
 #include <vulkan/vulkan_to_string.hpp>
 
 #include <GLFW/glfw3.h>
+
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+
+#include <limits>
+#include <algorithm>
+
 const std::vector<char const*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
@@ -30,10 +37,12 @@ void GraphicsContext::Init(const Window* window){
     CreateSurface(window);
     PickPhysicalDevice();
     CreateLogicalDevice();
+    CreateSwapchain(window);
+    CreateImageViews();
 }
 
 void GraphicsContext::Shutdown(){
-    
+    vmaDestroyAllocator(mAllocator);
 }
 
 void GraphicsContext::CreateInstance(){
@@ -219,6 +228,112 @@ void GraphicsContext::CreateLogicalDevice(){
 
     mDevice = vk::raii::Device(mPhysicalDevice, deviceCreateInfo);
     mGraphicsQueue = vk::raii::Queue(mDevice, queueIndex, 0);
+}
+
+void GraphicsContext::CreateVMAAllocator(){
+    VmaVulkanFunctions vulkanFunctions = {
+        .vkGetInstanceProcAddr = mInstance.getDispatcher()->vkGetInstanceProcAddr,
+        .vkGetDeviceProcAddr = mDevice.getDispatcher()->vkGetDeviceProcAddr,
+    };
+
+    VmaAllocatorCreateInfo allocatorCreateInfo = {
+        .flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        .vulkanApiVersion = VK_API_VERSION_1_3,
+        .physicalDevice = *mPhysicalDevice,
+        .device = *mDevice,
+        .instance = *mInstance,
+        .pVulkanFunctions = &vulkanFunctions
+    };
+
+    vmaCreateAllocator(&allocatorCreateInfo, &mAllocator);
+}
+
+void GraphicsContext::CreateSwapchain(const Window* window){
+    vk::SurfaceCapabilitiesKHR surfaceCapabilities = mPhysicalDevice.getSurfaceCapabilitiesKHR( *mSurface );
+    mSwapChainExtent                               = ChooseSwapExtent(surfaceCapabilities, window);
+    uint32_t minImageCount                         = ChooseSwapMinImageCount(surfaceCapabilities);
+
+    std::vector<vk::SurfaceFormatKHR> availableFormats = mPhysicalDevice.getSurfaceFormatsKHR(*mSurface);
+    mSwapChainSurfaceFormat                            = ChooseSwapSurfaceFormat(availableFormats);
+
+    std::vector<vk::PresentModeKHR> availablePresentModes = mPhysicalDevice.getSurfacePresentModesKHR(*mSurface);
+
+    vk::SwapchainCreateInfoKHR swapChainCreateInfo{
+                                               .surface          = *mSurface,
+                                               .minImageCount    = minImageCount,
+                                               .imageFormat      = mSwapChainSurfaceFormat.format,
+                                               .imageColorSpace  = mSwapChainSurfaceFormat.colorSpace,
+                                               .imageExtent      = mSwapChainExtent,
+                                               .imageArrayLayers = 1,
+                                               .imageUsage       = vk::ImageUsageFlagBits::eColorAttachment,
+                                               .imageSharingMode = vk::SharingMode::eExclusive,
+                                               .preTransform     = surfaceCapabilities.currentTransform,
+                                               .compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+                                               .presentMode      = ChooseSwapPresentMode(availablePresentModes),
+                                               .clipped          = true
+    };
+
+    mSwapChain = vk::raii::SwapchainKHR(mDevice, swapChainCreateInfo);
+    mSwapChainImages = mSwapChain.getImages();
+}
+
+vk::SurfaceFormatKHR GraphicsContext::ChooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const &availableFormats) {
+    const auto formatIt = std::ranges::find_if(
+        availableFormats,
+        [](const auto &format) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; });
+    return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
+}
+
+vk::PresentModeKHR GraphicsContext::ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &availablePresentModes) {
+    assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) { return presentMode == vk::PresentModeKHR::eFifo; }));
+    return std::ranges::any_of(availablePresentModes,
+                               [](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; }) ?
+               vk::PresentModeKHR::eMailbox :
+               vk::PresentModeKHR::eFifo;
+}
+
+vk::Extent2D GraphicsContext::ChooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities, const Window* window) {
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+    {
+        return capabilities.currentExtent;
+    }
+    int width, height;
+    glfwGetFramebufferSize(window->mWindowPtr, &width, &height);
+
+    return {
+        std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+        std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+    };
+}
+
+uint32_t GraphicsContext::ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const &surfaceCapabilities)
+{
+    auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
+    if ((0 < surfaceCapabilities.maxImageCount) && (surfaceCapabilities.maxImageCount < minImageCount))
+    {
+        minImageCount = surfaceCapabilities.maxImageCount;
+    }
+    return minImageCount;
+}
+
+void GraphicsContext::CreateImageViews() {
+    assert(mSwapChainImageViews.empty());
+
+    vk::ImageViewCreateInfo imageViewCreateInfo{ 
+        .viewType         = vk::ImageViewType::e2D,
+        .format           = mSwapChainSurfaceFormat.format,
+        .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
+    };
+    imageViewCreateInfo.components = {
+        vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity
+    };
+    imageViewCreateInfo.subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .layerCount = 1};        
+    
+    for (const auto &image : mSwapChainImages)
+    {
+        imageViewCreateInfo.image = image;
+        mSwapChainImageViews.emplace_back( mDevice, imageViewCreateInfo );
+    }
 }
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,

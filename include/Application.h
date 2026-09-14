@@ -16,6 +16,8 @@ namespace SUN{
 
             mGraphicsContextPtr = std::make_unique<GraphicsContext>();
             mGraphicsContextPtr->Init(mWindowPtr.get());
+
+            mResourceFactoryPtr = std::make_unique<ResourceFactory>(mGraphicsContextPtr.get());
         }
     
         ~Application(){
@@ -34,5 +36,6 @@ namespace SUN{
     private:
         std::unique_ptr<Window> mWindowPtr;
         std::unique_ptr<GraphicsContext> mGraphicsContextPtr;
+        std::unique_ptr<ResourceFactory> mResourceFactoryPtr;
     };
 }

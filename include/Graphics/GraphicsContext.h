@@ -2,8 +2,15 @@
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 #include <vulkan/vulkan_raii.hpp>
 
+#define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
+#include "vk_mem_alloc.h"
+
 namespace SUN{
+    constexpr int MAX_FRAMES_IN_FLIGHT = 3;
+
     class Window;
+    class ResourceFactory;
+    class ShaderCache;
 
     class GraphicsContext{
     public:
@@ -25,6 +32,15 @@ namespace SUN{
 
         void CreateLogicalDevice();
 
+        void CreateVMAAllocator();
+
+        void CreateSwapchain(const Window* window);
+        vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const &availableFormats);
+        vk::PresentModeKHR ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &availablePresentModes);
+        vk::Extent2D ChooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities, const Window* window);
+        uint32_t ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const &surfaceCapabilities);
+
+        void CreateImageViews();
 
         vk::raii::Context mContext;
         vk::raii::Instance mInstance = nullptr;
@@ -33,7 +49,18 @@ namespace SUN{
         vk::raii::Queue mGraphicsQueue = nullptr;
         vk::raii::SurfaceKHR mSurface = nullptr;
 
+        vk::raii::SwapchainKHR mSwapChain = nullptr;
+        std::vector<vk::Image> mSwapChainImages;
+        std::vector<vk::raii::ImageView> mSwapChainImageViews;
+        vk::SurfaceFormatKHR   mSwapChainSurfaceFormat;
+        vk::Extent2D           mSwapChainExtent;
+
         vk::raii::DebugUtilsMessengerEXT mDebugMessenger = nullptr;
+
+        VmaAllocator mAllocator;
+
+        friend ResourceFactory;
+        friend ShaderCache;
     };
 }
 
