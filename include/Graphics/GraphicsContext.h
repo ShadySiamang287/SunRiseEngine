@@ -5,12 +5,15 @@
 #define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
 #include "vk_mem_alloc.h"
 
+constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+
 namespace SUN{
     constexpr int MAX_FRAMES_IN_FLIGHT = 3;
 
     class Window;
     class ResourceFactory;
     class ShaderCache;
+    class GraphicsCommands;
 
     class GraphicsContext{
     public:
@@ -42,11 +45,22 @@ namespace SUN{
 
         void CreateImageViews();
 
+        void CreateCommandPool();
+
+        void CreateCommandBuffers();
+
+        void CreateSyncObjects();
+
         vk::raii::Context mContext;
+
         vk::raii::Instance mInstance = nullptr;
+
         vk::raii::PhysicalDevice mPhysicalDevice = nullptr;
         vk::raii::Device mDevice = nullptr;
+
+        uint32_t mQueueIndex = ~0;
         vk::raii::Queue mGraphicsQueue = nullptr;
+
         vk::raii::SurfaceKHR mSurface = nullptr;
 
         vk::raii::SwapchainKHR mSwapChain = nullptr;
@@ -54,13 +68,25 @@ namespace SUN{
         std::vector<vk::raii::ImageView> mSwapChainImageViews;
         vk::SurfaceFormatKHR   mSwapChainSurfaceFormat;
         vk::Extent2D           mSwapChainExtent;
+        
+        vk::raii::CommandPool mCommandPool = nullptr;
 
+        std::vector<vk::raii::CommandBuffer> mCommandBuffers;
+
+        
+        std::vector<vk::raii::Semaphore> mPresentCompleteSemaphores;
+        std::vector<vk::raii::Semaphore> mRenderFinishedSemaphores;
+        std::vector<vk::raii::Fence> mInFlightFences;
+        
         vk::raii::DebugUtilsMessengerEXT mDebugMessenger = nullptr;
-
         VmaAllocator mAllocator;
+
+        uint32_t mFrameIndex = 0;
+        uint32_t mImageIndex;
 
         friend ResourceFactory;
         friend ShaderCache;
+        friend GraphicsCommands;
     };
 }
 

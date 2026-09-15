@@ -13,6 +13,7 @@ set(SOURCES
     src/Graphics/GraphicsContext.cpp
     src/Graphics/ResourceFactory.cpp
     src/Graphics/ShaderCache.cpp
+    src/Graphics/GraphicsCommands.cpp
 )
 
 set(HEADERS

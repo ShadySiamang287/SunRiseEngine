@@ -39,9 +39,15 @@ void GraphicsContext::Init(const Window* window){
     CreateLogicalDevice();
     CreateSwapchain(window);
     CreateImageViews();
+    CreateCommandPool();
+    CreateCommandBuffers();
+    CreateCommandBuffers();
+    CreateVMAAllocator();
+    CreateSyncObjects();
 }
 
 void GraphicsContext::Shutdown(){
+    mDevice.waitIdle();
     vmaDestroyAllocator(mAllocator);
 }
 
@@ -181,18 +187,17 @@ bool GraphicsContext::isDeviceSuitable(vk::raii::PhysicalDevice const & physical
 void GraphicsContext::CreateLogicalDevice(){
     std::vector<vk::QueueFamilyProperties> queueFamilyProperties = mPhysicalDevice.getQueueFamilyProperties();
 
-    uint32_t queueIndex = ~0;
     for (uint32_t qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
     {
         if ((queueFamilyProperties[qfpIndex].queueFlags & vk::QueueFlagBits::eGraphics) &&
             mPhysicalDevice.getSurfaceSupportKHR(qfpIndex, *mSurface))
         {
             // found a queue family that supports both graphics and present
-            queueIndex = qfpIndex;
+            mQueueIndex = qfpIndex;
             break;
         }
     }
-    if (queueIndex == ~0)
+    if (mQueueIndex == ~0)
     {
         throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
     }
@@ -219,7 +224,7 @@ void GraphicsContext::CreateLogicalDevice(){
         };
     
     float                     queuePriority = 0.5f;
-    vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = queueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
+    vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = mQueueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};
     vk::DeviceCreateInfo      deviceCreateInfo{.pNext                   = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
                                                .queueCreateInfoCount    = 1,
                                                .pQueueCreateInfos       = &deviceQueueCreateInfo,
@@ -227,7 +232,7 @@ void GraphicsContext::CreateLogicalDevice(){
                                                .ppEnabledExtensionNames = requiredDeviceExtension.data()}; 
 
     mDevice = vk::raii::Device(mPhysicalDevice, deviceCreateInfo);
-    mGraphicsQueue = vk::raii::Queue(mDevice, queueIndex, 0);
+    mGraphicsQueue = vk::raii::Queue(mDevice, mQueueIndex, 0);
 }
 
 void GraphicsContext::CreateVMAAllocator(){
@@ -238,11 +243,11 @@ void GraphicsContext::CreateVMAAllocator(){
 
     VmaAllocatorCreateInfo allocatorCreateInfo = {
         .flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
-        .vulkanApiVersion = VK_API_VERSION_1_3,
         .physicalDevice = *mPhysicalDevice,
         .device = *mDevice,
+        .pVulkanFunctions = &vulkanFunctions,
         .instance = *mInstance,
-        .pVulkanFunctions = &vulkanFunctions
+        .vulkanApiVersion = VK_API_VERSION_1_3,
     };
 
     vmaCreateAllocator(&allocatorCreateInfo, &mAllocator);
@@ -334,6 +339,38 @@ void GraphicsContext::CreateImageViews() {
         imageViewCreateInfo.image = image;
         mSwapChainImageViews.emplace_back( mDevice, imageViewCreateInfo );
     }
+}
+
+void GraphicsContext::CreateCommandPool() {
+    vk::CommandPoolCreateInfo poolInfo{
+        .flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        .queueFamilyIndex = mQueueIndex
+    };
+
+    mCommandPool = vk::raii::CommandPool(mDevice, poolInfo);
+}
+
+void GraphicsContext::CreateCommandBuffers() {
+    vk::CommandBufferAllocateInfo allocInfo{ 
+        .commandPool = mCommandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = MAX_FRAMES_IN_FLIGHT
+    };
+
+    mCommandBuffers = vk::raii::CommandBuffers(mDevice, allocInfo);
+}
+
+void GraphicsContext::CreateSyncObjects() {
+    assert(mPresentCompleteSemaphores.empty() && mRenderFinishedSemaphores.empty() && mInFlightFences.empty());
+
+    for (int i = 0 ; i < mSwapChainImages.size(); i++){ 
+        mRenderFinishedSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
+    }
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        mPresentCompleteSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
+        mInFlightFences.emplace_back(mDevice, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
+    } 
 }
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,

@@ -5,6 +5,7 @@
 #include "Graphics/Window.h"
 #include "Graphics/GraphicsContext.h"
 #include "Graphics/ResourceFactory.h"
+#include "Graphics/GraphicsCommands.h"
 #include "SceneManagement/BaseScene.h"
 
 
@@ -20,6 +21,8 @@ namespace SUN{
             mGraphicsContextPtr->Init(mWindowPtr.get());
 
             mResourceFactoryPtr = std::make_unique<ResourceFactory>(mGraphicsContextPtr.get());
+        
+            GraphicsCommands::RegisterContext(mGraphicsContextPtr.get());
         }
     
         ~Application(){
@@ -31,9 +34,13 @@ namespace SUN{
                 mWindowPtr->PollEvents();
                 mCurrentScenePtr->HandleInput();
                 mCurrentScenePtr->Update();
+
+                GraphicsCommands::BeginFrame();
                 mCurrentScenePtr->Render();
+                GraphicsCommands::EndFrame();
             }
 
+            mGraphicsContextPtr->Shutdown();
             mCurrentScenePtr.reset();
             mWindowPtr->Shutdown();
             Logger::Shutdown();
