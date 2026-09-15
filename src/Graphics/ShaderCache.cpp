@@ -25,6 +25,15 @@ const vk::raii::ShaderModule& ShaderCache::GetShader(const std::filesystem::path
 
     auto [it, inserted] = mShaderModulesMap.try_emplace(
         path, mGraphicsContextPtr->mDevice, createInfo);
+
+    std::string name = "Shader modules for: " + path.string();
+
+    vk::DebugUtilsObjectNameInfoEXT name_info = {
+        .objectType = vk::ObjectType::eShaderModule,
+        .objectHandle = reinterpret_cast<uint64_t>(static_cast<VkShaderModule>(*it->second)),
+        .pObjectName = name.c_str(),
+    };
+    mGraphicsContextPtr->mDevice.setDebugUtilsObjectNameEXT(name_info);
     return it->second;
 }
 

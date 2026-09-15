@@ -28,7 +28,7 @@ vk::raii::PipelineLayout ResourceFactory::CreatePipelineLayout(){
     return vk::raii::PipelineLayout(mInstancePtr->mGraphicsContextPtr->mDevice, pipelineLayoutInfo);
 }
 
-vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout) {
+vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName) {
     vk::PipelineShaderStageCreateInfo vertShaderStageInfo = {
         .stage = vk::ShaderStageFlagBits::eVertex,
         .module = mInstancePtr->mShaderCachePtr->GetShader(config.vertexFile),
@@ -83,7 +83,16 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
 		     .renderPass          = nullptr},
 		    {.colorAttachmentCount = 1, .pColorAttachmentFormats = &mInstancePtr->mGraphicsContextPtr->mSwapChainSurfaceFormat.format}};
 
-    return vk::raii::Pipeline(mInstancePtr->mGraphicsContextPtr->mDevice, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
+    vk::raii::Pipeline pipeline = {mInstancePtr->mGraphicsContextPtr->mDevice, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>()};
+
+    vk::DebugUtilsObjectNameInfoEXT nameInfo {
+        .objectType = vk::ObjectType::ePipeline,
+        .objectHandle = reinterpret_cast<uint64_t>(static_cast<VkPipeline>(*pipeline)),
+        .pObjectName = debugName.c_str()
+    };
+    mInstancePtr->mGraphicsContextPtr->mDevice.setDebugUtilsObjectNameEXT(nameInfo);
+
+    return std::move(pipeline);
 }
 
 ResourceFactory* ResourceFactory::mInstancePtr = nullptr;

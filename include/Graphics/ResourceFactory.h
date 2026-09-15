@@ -27,7 +27,7 @@ namespace SUN {
         ~ResourceFactory();
 
         static vk::raii::PipelineLayout CreatePipelineLayout();
-        static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout);
+        static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName);
 
     private:
         GraphicsContext* mGraphicsContextPtr;
