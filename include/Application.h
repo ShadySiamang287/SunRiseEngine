@@ -4,6 +4,8 @@
 #include "Logger.h"
 #include "Graphics/Window.h"
 #include "Graphics/GraphicsContext.h"
+#include "Graphics/ResourceFactory.h"
+#include "SceneManagement/BaseScene.h"
 
 
 namespace SUN{
@@ -25,14 +27,20 @@ namespace SUN{
         }
 
         void Run(){
-            Logger::Log(Logger::LOG, "Main loop started!");
             while (!mWindowPtr->ShouldClose()){
                 mWindowPtr->PollEvents();
+                mCurrentScenePtr->HandleInput();
+                mCurrentScenePtr->Update();
+                mCurrentScenePtr->Render();
             }
 
+            mCurrentScenePtr.reset();
             mWindowPtr->Shutdown();
             Logger::Shutdown();
         }
+    protected:
+        std::unique_ptr<BaseScene> mCurrentScenePtr;
+    
     private:
         std::unique_ptr<Window> mWindowPtr;
         std::unique_ptr<GraphicsContext> mGraphicsContextPtr;

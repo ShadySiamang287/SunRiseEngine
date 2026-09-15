@@ -19,6 +19,7 @@ set(HEADERS
     include/Logger.h
     include/Application.h
     include/EntryPoint.h
+    include/SceneManagement/BaseScene.h
 )
     
 find_package(Vulkan REQUIRED)

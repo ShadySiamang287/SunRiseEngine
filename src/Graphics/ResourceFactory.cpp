@@ -12,6 +12,8 @@ ResourceFactory::ResourceFactory(GraphicsContext* context) : mGraphicsContextPtr
     mInstancePtr = this;
 }
 
+ResourceFactory::~ResourceFactory() = default;
+
 vk::raii::PipelineLayout ResourceFactory::CreatePipelineLayout(){
     if (!mInstancePtr) {
         Logger::Log(Logger::ERROR, "No reasource factory created!");
@@ -33,7 +35,7 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
         .pName = config.vertexName.c_str()
     };
     vk::PipelineShaderStageCreateInfo fragShaderStageInfo = {
-        .stage = vk::ShaderStageFlagBits::eVertex,
+        .stage = vk::ShaderStageFlagBits::eFragment,
         .module = mInstancePtr->mShaderCachePtr->GetShader(config.fragFile),
         .pName = config.fragName.c_str()
     };

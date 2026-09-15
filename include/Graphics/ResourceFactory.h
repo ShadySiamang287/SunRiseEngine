@@ -24,6 +24,7 @@ namespace SUN {
     class ResourceFactory {
     public:
         ResourceFactory(GraphicsContext* context);
+        ~ResourceFactory();
 
         static vk::raii::PipelineLayout CreatePipelineLayout();
         static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout);

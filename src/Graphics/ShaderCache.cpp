@@ -11,9 +11,10 @@ ShaderCache::ShaderCache(GraphicsContext* context) : mGraphicsContextPtr (contex
 }
 
 const vk::raii::ShaderModule& ShaderCache::GetShader(const std::filesystem::path& path){
-    if (mShaderModulesMap.contains(path)) {
-        return mShaderModulesMap[path];
+    if (auto it = mShaderModulesMap.find(path); it != mShaderModulesMap.end()) {
+        return it->second;
     }
+
 
     auto shaderCode = readFile(path);
 
@@ -22,8 +23,9 @@ const vk::raii::ShaderModule& ShaderCache::GetShader(const std::filesystem::path
         .pCode = reinterpret_cast<const uint32_t*>(shaderCode.data())
     };
 
-    mShaderModulesMap[path] = {mGraphicsContextPtr->mDevice, createInfo};
-    return mShaderModulesMap[path];
+    auto [it, inserted] = mShaderModulesMap.try_emplace(
+        path, mGraphicsContextPtr->mDevice, createInfo);
+    return it->second;
 }
 
 std::vector<char> ShaderCache::readFile(const std::filesystem::path& path) {
