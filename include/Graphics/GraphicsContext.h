@@ -1,5 +1,4 @@
 #pragma once
-#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 #include <vulkan/vulkan_raii.hpp>
 
 #define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
@@ -8,12 +7,13 @@
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace SUN{
-    constexpr int MAX_FRAMES_IN_FLIGHT = 3;
-
     class Window;
     class ResourceFactory;
     class ShaderCache;
     class GraphicsCommands;
+    class Buffer;
+    class ShaderBuffer;
+    class Application;
 
     class GraphicsContext{
     public:
@@ -87,6 +87,9 @@ namespace SUN{
         friend ResourceFactory;
         friend ShaderCache;
         friend GraphicsCommands;
+        friend Buffer;
+        friend ShaderBuffer;
+        friend Application;
     };
 }
 

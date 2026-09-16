@@ -1,6 +1,8 @@
 #include "Graphics/GraphicsCommands.h"
 #include "Graphics/GraphicsContext.h"
 
+#include "Graphics/vertex.h"
+
 #include "Logger.h"
 
 using namespace SUN;
@@ -92,13 +94,13 @@ void GraphicsCommands::BeginDraw(){
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].beginRendering(renderingInfo);
 }
 
-void GraphicsCommands::Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
+void GraphicsCommands::Draw(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance) {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].draw(vertexCount, instanceCount, firstVertex, firstInstance);
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
 void GraphicsCommands::EndDraw(){
@@ -130,6 +132,25 @@ void GraphicsCommands::BindPipeline(vk::raii::Pipeline& pipeline) {
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 }
 
+void GraphicsCommands::PushConstants(vk::raii::PipelineLayout& layout, vk::ShaderStageFlags flags, const SUN::PushConstants& constants) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pushConstants(*layout, flags, 0, sizeof(SUN::PushConstants), &constants);
+}
+
+void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindVertexBuffers(0, buffer.GetHandle(), buffer.GetVertexOffset());
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), vk::IndexType::eUint32);
+}
+
 void GraphicsCommands::SetViewport(){
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
@@ -140,9 +161,9 @@ void GraphicsCommands::SetViewport(){
         0,
         vk::Viewport(
             0.f, 
-            0.f,
+            static_cast<float>(mContextPtr->mSwapChainExtent.height),
             static_cast<float>(mContextPtr->mSwapChainExtent.width), 
-            static_cast<float>(mContextPtr->mSwapChainExtent.height)
+            -static_cast<float>(mContextPtr->mSwapChainExtent.height)
         )
     );
 }

@@ -1,6 +1,8 @@
-#pragma once;
-#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+#pragma once
 #include <vulkan/vulkan_raii.hpp>
+
+#include "Graphics/Buffers.h"
+#include "Graphics/vertex.h"
 
 namespace SUN {
     class GraphicsContext;
@@ -13,10 +15,12 @@ namespace SUN {
         static void EndFrame();
 
         static void BeginDraw();
-        static void Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
+        static void Draw(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance);
         static void EndDraw();
 
         static void BindPipeline(vk::raii::Pipeline& pipeline);
+        static void BindGeometryBuffer(const GeometryBuffer& buffer);
+        static void PushConstants(vk::raii::PipelineLayout& layout, vk::ShaderStageFlags flags, const PushConstants& constants);
 
         static void SetViewport();
         static void SetScissor();

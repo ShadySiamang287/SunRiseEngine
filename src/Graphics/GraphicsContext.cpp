@@ -37,12 +37,12 @@ void GraphicsContext::Init(const Window* window){
     CreateSurface(window);
     PickPhysicalDevice();
     CreateLogicalDevice();
+    CreateVMAAllocator();
     CreateSwapchain(window);
     CreateImageViews();
     CreateCommandPool();
     CreateCommandBuffers();
     CreateCommandBuffers();
-    CreateVMAAllocator();
     CreateSyncObjects();
 }
 
@@ -211,10 +211,13 @@ void GraphicsContext::CreateLogicalDevice(){
             {},                                    // vk::PhysicalDeviceFeatures2
             {.shaderDrawParameters = true},        // vk::PhysicalDeviceVulkan11Features
             {
+                .descriptorIndexing = true,
                 .shaderSampledImageArrayNonUniformIndexing = true,
+                .descriptorBindingUpdateUnusedWhilePending = true,
                 .descriptorBindingPartiallyBound = true,
                 .descriptorBindingVariableDescriptorCount = true,
-                .runtimeDescriptorArray = true
+                .runtimeDescriptorArray = true,
+                .bufferDeviceAddress = true,
             },                                     
             {
                 .synchronization2 = true,
@@ -242,7 +245,7 @@ void GraphicsContext::CreateVMAAllocator(){
     };
 
     VmaAllocatorCreateInfo allocatorCreateInfo = {
-        .flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        .flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT | VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
         .physicalDevice = *mPhysicalDevice,
         .device = *mDevice,
         .pVulkanFunctions = &vulkanFunctions,

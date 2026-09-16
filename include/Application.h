@@ -6,6 +6,7 @@
 #include "Graphics/GraphicsContext.h"
 #include "Graphics/ResourceFactory.h"
 #include "Graphics/GraphicsCommands.h"
+#include "Graphics/Buffers.h"
 #include "SceneManagement/BaseScene.h"
 
 
@@ -23,6 +24,7 @@ namespace SUN{
             mResourceFactoryPtr = std::make_unique<ResourceFactory>(mGraphicsContextPtr.get());
         
             GraphicsCommands::RegisterContext(mGraphicsContextPtr.get());
+            Buffer::RegisterContext(mGraphicsContextPtr.get());
         }
     
         ~Application(){
@@ -40,8 +42,10 @@ namespace SUN{
                 GraphicsCommands::EndFrame();
             }
 
-            mGraphicsContextPtr->Shutdown();
+            mGraphicsContextPtr->mDevice.waitIdle();
+
             mCurrentScenePtr.reset();
+            mGraphicsContextPtr->Shutdown();
             mWindowPtr->Shutdown();
             Logger::Shutdown();
         }

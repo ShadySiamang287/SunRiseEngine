@@ -4,6 +4,7 @@
 #include "Graphics/ShaderCache.h"
 
 #include "Logger.h"
+#include "Graphics/vertex.h"
 
 using namespace SUN;
 
@@ -20,9 +21,16 @@ vk::raii::PipelineLayout ResourceFactory::CreatePipelineLayout(){
         return nullptr;
     }
 
+    vk::PushConstantRange pushRange {
+        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+        .offset = 0,
+        .size = sizeof(PushConstants)
+    };
+
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo = {
         .setLayoutCount = 0,
-        .pushConstantRangeCount = 0
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &pushRange
     };
 
     return vk::raii::PipelineLayout(mInstancePtr->mGraphicsContextPtr->mDevice, pipelineLayoutInfo);
@@ -44,7 +52,15 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
         vertShaderStageInfo, fragShaderStageInfo
     };
 
-    vk::PipelineVertexInputStateCreateInfo   vertexInputInfo;
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
+    vk::PipelineVertexInputStateCreateInfo   vertexInputInfo {
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &bindingDescription,
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
+        .pVertexAttributeDescriptions = attributeDescriptions.data()
+    };
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = config.primitiveTopology};
     vk::PipelineViewportStateCreateInfo      viewportState{.viewportCount = 1, .scissorCount = 1};
 
@@ -53,7 +69,7 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
         .rasterizerDiscardEnable = vk::False,
         .polygonMode             = vk::PolygonMode::eFill,
         .cullMode                = vk::CullModeFlagBits::eBack,
-        .frontFace               = vk::FrontFace::eClockwise,
+        .frontFace               = vk::FrontFace::eCounterClockwise,
         .depthBiasEnable         = vk::False,
         .lineWidth               = 1.0f
     };

@@ -14,6 +14,7 @@ set(SOURCES
     src/Graphics/ResourceFactory.cpp
     src/Graphics/ShaderCache.cpp
     src/Graphics/GraphicsCommands.cpp
+    src/Graphics/Buffers.cpp
 )
 
 set(HEADERS
@@ -21,6 +22,7 @@ set(HEADERS
     include/Application.h
     include/EntryPoint.h
     include/SceneManagement/BaseScene.h
+    include/graphics/vertex.h
 )
     
 find_package(Vulkan REQUIRED)
@@ -58,3 +60,4 @@ target_link_libraries(SunriseEngine PUBLIC
     Vulkan::Vulkan
     GPUOpen::VulkanMemoryAllocator
 )
+target_compile_definitions(SunriseEngine PRIVATE VULKAN_HPP_NO_STRUCT_CONSTRUCTORS)
