@@ -5,7 +5,8 @@
 #include <glm/glm.hpp>
 #include <array>
 
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
+#include <vk_mem_alloc.h>
 
 namespace SUN{
     struct Vertex {
@@ -26,5 +27,16 @@ namespace SUN{
 
     struct PushConstants {
         vk::DeviceAddress frameDataAddress;
+    };
+
+    struct AllocatedImage {
+        vk::Image image{nullptr};
+        vk::raii::ImageView view{nullptr};
+        VmaAllocation allocation{VK_NULL_HANDLE};
+    };
+
+    struct DescriptorResources {
+        vk::raii::DescriptorSetLayout setLayout{nullptr};
+        std::vector<vk::raii::DescriptorSet> sets;
     };
 }

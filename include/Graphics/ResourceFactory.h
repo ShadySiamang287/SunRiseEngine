@@ -2,10 +2,11 @@
 #include <memory>
 #include <filesystem>
 
-
 #include <vulkan/vulkan_raii.hpp>
 
+#include <span>
 
+#include "Graphics/vertex.h"
 
 namespace SUN {
     struct PipelineConfig {
@@ -16,6 +17,15 @@ namespace SUN {
         std::string fragName;
 
         vk::PrimitiveTopology primitiveTopology;
+
+        std::vector<vk::Format> colorAttachmentFormats;
+
+        std::vector<uint32_t> colorAttachmentLocations;
+        vk::Format depthAttachmentFormat = vk::Format::eUndefined;
+        vk::Format stencilAttachmentFormat = vk::Format::eUndefined;
+
+        std::vector<uint32_t> inputAttachmentIndices;
+        bool useVertexInput = true;
     };
 
     class GraphicsContext;
@@ -26,7 +36,8 @@ namespace SUN {
         ResourceFactory(GraphicsContext* context);
         ~ResourceFactory();
 
-        static vk::raii::PipelineLayout CreatePipelineLayout();
+        static DescriptorResources CreateDescriptorResources(std::span<vk::DescriptorSetLayoutBinding> bindings);
+        static vk::raii::PipelineLayout CreatePipelineLayout(DescriptorResources* resources = nullptr);
         static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName);
 
     private:

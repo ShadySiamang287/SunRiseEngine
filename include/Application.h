@@ -37,7 +37,8 @@ namespace SUN{
                 mCurrentScenePtr->HandleInput();
                 mCurrentScenePtr->Update();
 
-                GraphicsCommands::BeginFrame();
+                bool beginFrameResult = GraphicsCommands::BeginFrame();
+                if(!beginFrameResult) continue;
                 mCurrentScenePtr->Render();
                 GraphicsCommands::EndFrame();
             }

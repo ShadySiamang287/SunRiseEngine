@@ -1,8 +1,10 @@
 #pragma once
 #include <vulkan/vulkan_raii.hpp>
 
-#define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
+#define VMA_VULKAN_VERSION 1004000 // Vulkan 1.4
 #include "vk_mem_alloc.h"
+
+#include "Graphics/vertex.h"
 
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -15,11 +17,17 @@ namespace SUN{
     class ShaderBuffer;
     class Application;
 
+    struct GBuffer{
+        AllocatedImage Albedo;
+        AllocatedImage Normal;
+        AllocatedImage Depth;
+    };
+
     class GraphicsContext{
     public:
         GraphicsContext() {}
 
-        void Init(const Window* window);
+        void Init(Window* window);
         void Shutdown();
 
     private:
@@ -28,7 +36,7 @@ namespace SUN{
 
         void SetupDebugMessenger();
 
-        void CreateSurface(const Window* window);
+        void CreateSurface();
 
         void PickPhysicalDevice();
         bool isDeviceSuitable(vk::raii::PhysicalDevice const & physicalDevice);
@@ -37,11 +45,14 @@ namespace SUN{
 
         void CreateVMAAllocator();
 
-        void CreateSwapchain(const Window* window);
+        void CreateSwapchain();
         vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const &availableFormats);
         vk::PresentModeKHR ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const &availablePresentModes);
         vk::Extent2D ChooseSwapExtent(vk::SurfaceCapabilitiesKHR const &capabilities, const Window* window);
         uint32_t ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const &surfaceCapabilities);
+
+        void RecreateSwapChain();
+        void CleanupSwapChain();
 
         void CreateImageViews();
 
@@ -50,6 +61,22 @@ namespace SUN{
         void CreateCommandBuffers();
 
         void CreateSyncObjects();
+
+        void CreateGBuffers();
+        void DestroyGBuffers();
+
+        void CreateDesciptorPool();
+
+        void GraphicsContext::TransitionImageLayoutImmediate(
+            vk::Image image,
+            vk::ImageLayout old_layout,
+            vk::ImageLayout new_layout,
+            vk::AccessFlags2 src_access_mask,
+            vk::AccessFlags2 dst_access_mask,
+            vk::PipelineStageFlags2 src_stage_mask,
+            vk::PipelineStageFlags2 dst_stage_mask,
+            vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor
+        );
 
         vk::raii::Context mContext;
 
@@ -63,6 +90,7 @@ namespace SUN{
 
         vk::raii::SurfaceKHR mSurface = nullptr;
 
+        Window* mWindowPtr = nullptr;
         vk::raii::SwapchainKHR mSwapChain = nullptr;
         std::vector<vk::Image> mSwapChainImages;
         std::vector<vk::raii::ImageView> mSwapChainImageViews;
@@ -73,6 +101,9 @@ namespace SUN{
 
         std::vector<vk::raii::CommandBuffer> mCommandBuffers;
 
+
+        std::array<GBuffer, MAX_FRAMES_IN_FLIGHT> mGBuffers;
+        vk::raii::DescriptorPool mDescriptorPool = nullptr;
         
         std::vector<vk::raii::Semaphore> mPresentCompleteSemaphores;
         std::vector<vk::raii::Semaphore> mRenderFinishedSemaphores;

@@ -12,6 +12,8 @@ namespace SUN{
 
         bool ShouldClose();
 
+
+        bool mResized = false;
     private:
         GLFWwindow* mWindowPtr {nullptr};
         uint32_t mWidth = 800;

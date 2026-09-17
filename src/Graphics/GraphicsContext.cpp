@@ -20,7 +20,7 @@ const std::vector<char const*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 
-std::vector<const char*> requiredDeviceExtension = {vk::KHRSwapchainExtensionName};
+std::vector<const char*> requiredDeviceExtension = {vk::KHRSwapchainExtensionName, vk::EXTDynamicRenderingUnusedAttachmentsExtensionName};
 
 
 #ifdef NDEBUG
@@ -31,23 +31,27 @@ constexpr bool enableValidationLayers = true;
 
 using namespace SUN;
 
-void GraphicsContext::Init(const Window* window){
+void GraphicsContext::Init(Window* window){
+    mWindowPtr = window;
     CreateInstance();
     SetupDebugMessenger();
-    CreateSurface(window);
+    CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
     CreateVMAAllocator();
-    CreateSwapchain(window);
+    CreateSwapchain();
     CreateImageViews();
     CreateCommandPool();
     CreateCommandBuffers();
     CreateCommandBuffers();
     CreateSyncObjects();
+    CreateGBuffers();
+    CreateDesciptorPool();
 }
 
 void GraphicsContext::Shutdown(){
     mDevice.waitIdle();
+    DestroyGBuffers();
     vmaDestroyAllocator(mAllocator);
 }
 
@@ -130,9 +134,9 @@ void GraphicsContext::SetupDebugMessenger() {
     mDebugMessenger = mInstance.createDebugUtilsMessengerEXT( debugUtilsMessengerCreateInfoEXT );
 }
 
-void GraphicsContext::CreateSurface(const Window* window) {
+void GraphicsContext::CreateSurface() {
     VkSurfaceKHR surface;
-    if (glfwCreateWindowSurface(*mInstance, window->mWindowPtr, nullptr, &surface) != 0) {
+    if (glfwCreateWindowSurface(*mInstance, mWindowPtr->mWindowPtr, nullptr, &surface) != 0) {
         throw std::runtime_error("Failed to create window surface");
     }
     mSurface = vk::raii::SurfaceKHR(mInstance, surface);
@@ -206,7 +210,9 @@ void GraphicsContext::CreateLogicalDevice(){
                     vk::PhysicalDeviceVulkan11Features,
                     vk::PhysicalDeviceVulkan12Features,
                     vk::PhysicalDeviceVulkan13Features,
-                    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
+                    vk::PhysicalDeviceVulkan14Features,
+                    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
+                    vk::PhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT>
         featureChain = {
             {},                                    // vk::PhysicalDeviceFeatures2
             {.shaderDrawParameters = true},        // vk::PhysicalDeviceVulkan11Features
@@ -223,7 +229,15 @@ void GraphicsContext::CreateLogicalDevice(){
                 .synchronization2 = true,
                 .dynamicRendering = true,
             },            // vk::PhysicalDeviceVulkan13Features
-            {.extendedDynamicState = true}         // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+            {
+                .dynamicRenderingLocalRead = true
+            },// vk::PhysicalDeviceVulkan14Features
+            {
+                .extendedDynamicState = true
+            }, // vk::extended dynamic state
+            {
+                .dynamicRenderingUnusedAttachments = true
+            }
         };
     
     float                     queuePriority = 0.5f;
@@ -250,15 +264,15 @@ void GraphicsContext::CreateVMAAllocator(){
         .device = *mDevice,
         .pVulkanFunctions = &vulkanFunctions,
         .instance = *mInstance,
-        .vulkanApiVersion = VK_API_VERSION_1_3,
+        .vulkanApiVersion = VK_API_VERSION_1_4,
     };
 
     vmaCreateAllocator(&allocatorCreateInfo, &mAllocator);
 }
 
-void GraphicsContext::CreateSwapchain(const Window* window){
+void GraphicsContext::CreateSwapchain(){
     vk::SurfaceCapabilitiesKHR surfaceCapabilities = mPhysicalDevice.getSurfaceCapabilitiesKHR( *mSurface );
-    mSwapChainExtent                               = ChooseSwapExtent(surfaceCapabilities, window);
+    mSwapChainExtent                               = ChooseSwapExtent(surfaceCapabilities, mWindowPtr);
     uint32_t minImageCount                         = ChooseSwapMinImageCount(surfaceCapabilities);
 
     std::vector<vk::SurfaceFormatKHR> availableFormats = mPhysicalDevice.getSurfaceFormatsKHR(*mSurface);
@@ -324,6 +338,21 @@ uint32_t GraphicsContext::ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR con
     return minImageCount;
 }
 
+void GraphicsContext::RecreateSwapChain() {
+    mDevice.waitIdle();
+    CleanupSwapChain();
+
+    CreateSwapchain();
+    CreateImageViews();
+    CreateGBuffers();
+}
+
+void GraphicsContext::CleanupSwapChain() {
+    DestroyGBuffers();
+    mSwapChainImageViews.clear();
+    mSwapChain = nullptr;
+}
+
 void GraphicsContext::CreateImageViews() {
     assert(mSwapChainImageViews.empty());
 
@@ -374,6 +403,226 @@ void GraphicsContext::CreateSyncObjects() {
         mPresentCompleteSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
         mInFlightFences.emplace_back(mDevice, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
     } 
+}
+
+void GraphicsContext::CreateGBuffers() {
+    const vk::ImageCreateInfo albedo {
+        .sType = vk::StructureType::eImageCreateInfo,
+        .imageType = vk::ImageType::e2D,
+        .format = vk::Format::eR16G16B16A16Sfloat,
+        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eInputAttachment
+    };
+
+    const vk::ImageCreateInfo normal {
+        .sType = vk::StructureType::eImageCreateInfo,
+        .imageType = vk::ImageType::e2D,
+        .format = vk::Format::eR16G16B16A16Sfloat,
+        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eInputAttachment
+    };
+
+    const vk::ImageCreateInfo depth {
+        .sType = vk::StructureType::eImageCreateInfo,
+        .imageType = vk::ImageType::e2D,
+        .format = vk::Format::eD32Sfloat,
+        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eInputAttachment
+    };
+
+    VmaAllocationCreateInfo allocInfo {
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
+    };
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        GBuffer& buffer = mGBuffers[i];
+        VkImage tempAlbedo;
+        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&albedo), &allocInfo, &tempAlbedo, &buffer.Albedo.allocation, nullptr);
+        buffer.Albedo.image = tempAlbedo;
+
+        TransitionImageLayoutImmediate(
+            buffer.Albedo.image,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eRenderingLocalReadKHR,
+            {},                                            // no prior access to wait on
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        );
+
+        vk::ImageViewCreateInfo albedoView{
+            .image = buffer.Albedo.image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = vk::Format::eR16G16B16A16Sfloat,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+        buffer.Albedo.view = vk::raii::ImageView(mDevice, albedoView);
+
+        VkImage tempNormal;
+        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&normal), &allocInfo, &tempNormal, &buffer.Normal.allocation, nullptr);
+        buffer.Normal.image = tempNormal;
+
+        TransitionImageLayoutImmediate(
+            buffer.Normal.image,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eRenderingLocalReadKHR,
+            {},                                            // no prior access to wait on
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        );
+
+        vk::ImageViewCreateInfo normalView{
+            .image = buffer.Normal.image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = vk::Format::eR16G16B16A16Sfloat,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+        buffer.Normal.view = vk::raii::ImageView(mDevice, normalView);
+
+        VkImage tempDepth;
+        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&depth), &allocInfo, &tempDepth, &buffer.Depth.allocation, nullptr);
+        buffer.Depth.image = tempDepth;
+
+        TransitionImageLayoutImmediate(
+            buffer.Depth.image,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eRenderingLocalReadKHR,
+            {},                                            // no prior access to wait on
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::ImageAspectFlagBits::eDepth
+        );
+
+
+        vk::ImageViewCreateInfo depthView{
+            .image = buffer.Depth.image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = vk::Format::eD32Sfloat,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eDepth,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+        buffer.Depth.view = vk::raii::ImageView(mDevice, depthView);
+        
+    }
+}
+
+void GraphicsContext::DestroyGBuffers() {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
+        GBuffer& buffer = mGBuffers[i];
+        vmaDestroyImage(mAllocator, buffer.Albedo.image, buffer.Albedo.allocation);
+        vmaDestroyImage(mAllocator, buffer.Normal.image, buffer.Normal.allocation);
+        vmaDestroyImage(mAllocator, buffer.Depth.image, buffer.Depth.allocation);
+    }
+}
+
+void GraphicsContext::CreateDesciptorPool(){
+    std::vector<vk::DescriptorPoolSize> poolSizes = {
+        {vk::DescriptorType::eInputAttachment, 8}
+    };
+
+    vk::DescriptorPoolCreateInfo poolInfo {
+        .maxSets = 64,
+        .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+        .pPoolSizes = poolSizes.data()
+    };
+    mDescriptorPool = vk::raii::DescriptorPool(mDevice, poolInfo);
+}
+
+void GraphicsContext::TransitionImageLayoutImmediate(
+    vk::Image image,
+    vk::ImageLayout old_layout,
+    vk::ImageLayout new_layout,
+    vk::AccessFlags2 src_access_mask,
+    vk::AccessFlags2 dst_access_mask,
+    vk::PipelineStageFlags2 src_stage_mask,
+    vk::PipelineStageFlags2 dst_stage_mask,
+    vk::ImageAspectFlags aspectMask
+) {
+    // 1. Allocate a temporary command buffer from your existing pool
+    vk::CommandBufferAllocateInfo allocInfo{
+        .commandPool = *mCommandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+    vk::raii::CommandBuffers tempBuffers(mDevice, allocInfo);
+    vk::raii::CommandBuffer& cmd = tempBuffers.front();
+
+    // 2. Begin, one-time-submit
+    cmd.begin(vk::CommandBufferBeginInfo{
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    });
+
+    // 3. Record the barrier
+    vk::ImageMemoryBarrier2 barrier{
+        .srcStageMask = src_stage_mask,
+        .srcAccessMask = src_access_mask,
+        .dstStageMask = dst_stage_mask,
+        .dstAccessMask = dst_access_mask,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange = {
+            .aspectMask = aspectMask,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    };
+
+    vk::DependencyInfo dependency{
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &barrier
+    };
+    cmd.pipelineBarrier2(dependency);
+
+    // 4. End and submit
+    cmd.end();
+
+    vk::SubmitInfo submitInfo{
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*cmd
+    };
+    mGraphicsQueue.submit(submitInfo, nullptr);
+
+    // 5. Wait for it to finish before returning — this is a one-shot setup call,
+    //    so blocking here is fine (don't do this per-frame!)
+    mGraphicsQueue.waitIdle();
+
+    // tempBuffers goes out of scope here and frees itself
 }
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,
