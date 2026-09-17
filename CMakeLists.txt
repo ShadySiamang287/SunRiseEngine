@@ -9,6 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(FetchContent)
 
 set(SOURCES 
+    src/Core/LayerStack.cpp
+    src/Core/Application.cpp
     src/Graphics/Window.cpp
     src/Graphics/GraphicsContext.cpp
     src/Graphics/ResourceFactory.cpp
@@ -18,10 +20,11 @@ set(SOURCES
 )
 
 set(HEADERS
-    include/Logger.h
-    include/Application.h
     include/EntryPoint.h
+    include/Logger.h
+    include/Core/Layer.h
     include/SceneManagement/BaseScene.h
+    include/SceneManagement/SceneManager.h
     include/graphics/vertex.h
 )
     

@@ -1,5 +1,5 @@
 #pragma once
-#include "Application.h"
+#include "Core/Application.h"
 
 namespace SUN {
 
@@ -8,8 +8,6 @@ namespace SUN {
 
 int main(){
     std::unique_ptr<SUN::Application> app {SUN::CreateApplication()};
-
     app->Run();
-
     return 0;
 }
