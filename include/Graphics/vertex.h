@@ -10,7 +10,8 @@
 
 namespace SUN{
     struct Vertex {
-        glm::vec2 pos;
+        glm::vec3 pos;
+        glm::vec3 normal;
         glm::vec3 colour;
 
         static vk::VertexInputBindingDescription getBindingDescription()
@@ -18,11 +19,14 @@ namespace SUN{
             return {.binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex};
         }
 
-        static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+        static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions()
         {
-        return {{{.location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, pos)},
-                {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, colour)}}};
-        }
+            return {{
+                {.location = 0, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, pos)},
+                {.location = 2, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, normal)},
+                {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, colour)},
+                }};
+            }
     };
 
     struct PushConstants {

@@ -552,6 +552,7 @@ void GraphicsContext::CreateDesciptorPool(){
     };
 
     vk::DescriptorPoolCreateInfo poolInfo {
+        .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
         .maxSets = 64,
         .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
         .pPoolSizes = poolSizes.data()

@@ -174,46 +174,62 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
 
     vk::raii::Pipeline pipeline = nullptr;
 
-    if (!config.inputAttachmentIndices.empty()) {
-        vk::RenderingInputAttachmentIndexInfo inputInfo{
-            .colorAttachmentCount =
-                static_cast<uint32_t>(config.inputAttachmentIndices.size()),
-            .pColorAttachmentInputIndices =
-                config.inputAttachmentIndices.data()
-        };
+    // if (!config.inputAttachmentIndices.empty()) {
+    //     vk::RenderingInputAttachmentIndexInfo inputInfo{
+    //         .colorAttachmentCount =
+    //             static_cast<uint32_t>(config.inputAttachmentIndices.size()),
+    //         .pColorAttachmentInputIndices =
+    //             config.inputAttachmentIndices.data()
+    //     };
 
-        vk::StructureChain<
-            vk::GraphicsPipelineCreateInfo,
-            vk::PipelineRenderingCreateInfo,
-            vk::RenderingAttachmentLocationInfo,
-            vk::RenderingInputAttachmentIndexInfo
+    //     vk::StructureChain<
+    //         vk::GraphicsPipelineCreateInfo,
+    //         vk::RenderingAttachmentLocationInfo,
+    //         vk::RenderingInputAttachmentIndexInfo,
+    //         vk::PipelineRenderingCreateInfo
+    //     > chain{
+    //         graphicsInfo,
+    //         locationInfo,
+    //         inputInfo,
+    //         renderingInfo
+    //     };
+
+    //     pipeline = vk::raii::Pipeline(
+    //         mInstancePtr->mGraphicsContextPtr->mDevice,
+    //         nullptr,
+    //         chain.get<vk::GraphicsPipelineCreateInfo>());
+    // } else {
+    //     vk::StructureChain<
+    //         vk::GraphicsPipelineCreateInfo,
+    //         vk::RenderingAttachmentLocationInfo,
+    //         vk::PipelineRenderingCreateInfo
+    //     > chain{
+    //         graphicsInfo,
+    //         locationInfo,
+    //         renderingInfo
+    //     };
+
+    //     pipeline = vk::raii::Pipeline(
+    //         mInstancePtr->mGraphicsContextPtr->mDevice,
+    //         nullptr,
+    //         chain.get<vk::GraphicsPipelineCreateInfo>());
+    // }
+
+    vk::StructureChain<
+        vk::GraphicsPipelineCreateInfo,
+        vk::RenderingAttachmentLocationInfo,
+        vk::PipelineRenderingCreateInfo
         > chain{
-            graphicsInfo,
-            renderingInfo,
-            locationInfo,
-            inputInfo
-        };
+        graphicsInfo,
+        locationInfo,
+        renderingInfo
+    };
 
-        pipeline = vk::raii::Pipeline(
-            mInstancePtr->mGraphicsContextPtr->mDevice,
-            nullptr,
-            chain.get<vk::GraphicsPipelineCreateInfo>());
-    } else {
-        vk::StructureChain<
-            vk::GraphicsPipelineCreateInfo,
-            vk::PipelineRenderingCreateInfo,
-            vk::RenderingAttachmentLocationInfo
-        > chain{
-            graphicsInfo,
-            renderingInfo,
-            locationInfo
-        };
-
-        pipeline = vk::raii::Pipeline(
-            mInstancePtr->mGraphicsContextPtr->mDevice,
-            nullptr,
-            chain.get<vk::GraphicsPipelineCreateInfo>());
-    }
+    pipeline = vk::raii::Pipeline(
+        mInstancePtr->mGraphicsContextPtr->mDevice,
+        nullptr,
+        chain.get<vk::GraphicsPipelineCreateInfo>());
+    
 
     vk::DebugUtilsObjectNameInfoEXT nameInfo {
         .objectType = vk::ObjectType::ePipeline,

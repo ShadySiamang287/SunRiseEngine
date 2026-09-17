@@ -90,50 +90,12 @@ void GraphicsCommands::BeginDraw(){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-    
+
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].begin({});
-
-    // TransitionImageLayout(
-    //     mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Albedo.image,
-    //     vk::ImageLayout::eRenderingLocalReadKHR,
-    //     vk::ImageLayout::eColorAttachmentOptimal,
-
-    //     vk::AccessFlagBits2::eShaderSampledRead,
-    //     vk::AccessFlagBits2::eColorAttachmentWrite,
-
-    //     vk::PipelineStageFlagBits2::eFragmentShader,
-    //     vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    // );
-
-    // TransitionImageLayout(
-    //     mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Normal.image,
-    //     vk::ImageLayout::eRenderingLocalReadKHR,
-    //     vk::ImageLayout::eColorAttachmentOptimal,
-
-    //     vk::AccessFlagBits2::eShaderSampledRead,
-    //     vk::AccessFlagBits2::eColorAttachmentWrite,
-
-    //     vk::PipelineStageFlagBits2::eFragmentShader,
-    //     vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    // );
-
-    // TransitionImageLayout(
-    //     mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Depth.image,
-    //     vk::ImageLayout::eRenderingLocalReadKHR,
-    //     vk::ImageLayout::eDepthAttachmentOptimal,
-
-    //     vk::AccessFlagBits2::eShaderSampledRead,
-    //     vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-
-    //     vk::PipelineStageFlagBits2::eFragmentShader,
-    //     vk::PipelineStageFlagBits2::eEarlyFragmentTests |
-    //     vk::PipelineStageFlagBits2::eLateFragmentTests,
-    //     vk::ImageAspectFlagBits::eDepth
-    // );
 
     TransitionImageLayout(
         mContextPtr->mSwapChainImages[mContextPtr->mImageIndex],
-        vk::ImageLayout::ePresentSrcKHR,
+        vk::ImageLayout::eUndefined,
         vk::ImageLayout::eColorAttachmentOptimal,
 
         {}, // src access
@@ -162,8 +124,6 @@ void GraphicsCommands::EndDraw(){
     
     auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
 
-    cmd.endRendering();
-
     TransitionImageLayout(
         mContextPtr->mSwapChainImages[mContextPtr->mImageIndex],
         vk::ImageLayout::eColorAttachmentOptimal,
@@ -185,7 +145,11 @@ void GraphicsCommands::BeginGBufferPass() {
     }
 
     auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
-
+    vk::DebugUtilsLabelEXT label {
+        .pLabelName = "Deffered pass",
+    };
+    label.setColor({0.5F, 0.76F, .32F, 1.F});
+    cmd.beginDebugUtilsLabelEXT(label);
 
     vk::RenderingAttachmentInfo gbuffer0{
         .imageView = mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Albedo.view,
@@ -245,6 +209,45 @@ void GraphicsCommands::EndGBufferPass() {
 
     auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
 
+    cmd.endRendering();
+    cmd.endDebugUtilsLabelEXT();
+}
+
+void GraphicsCommands::BeginLightingPass() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+
+    vk::DebugUtilsLabelEXT label {
+        .pLabelName = "Lighting pass",
+    };
+    label.setColor({0.5F, 0.76F, .32F, 1.F});
+    cmd.beginDebugUtilsLabelEXT(label);
+
+    vk::RenderingAttachmentInfo swapchain{
+        .imageView = mContextPtr->mSwapChainImageViews[mContextPtr->mImageIndex],
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue{
+            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        }
+    };
+
+    vk::RenderingInfo renderingInfo{
+        .renderArea = {
+            .offset = {0, 0},
+            .extent = mContextPtr->mSwapChainExtent
+        },
+        .layerCount = 1,          // Required when viewMask == 0
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &swapchain,
+    };
+
+    cmd.beginRendering(renderingInfo);
+
     static const vk::ImageSubresourceRange colorRange{
         .aspectMask = vk::ImageAspectFlagBits::eColor,
         .baseMipLevel = 0,
@@ -291,14 +294,6 @@ void GraphicsCommands::EndGBufferPass() {
     };
 
     cmd.pipelineBarrier2(dependency);
-
-}
-
-void GraphicsCommands::BeginLightingPass() {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
 }
 
 void GraphicsCommands::EndLightingPass() {
@@ -306,6 +301,11 @@ void GraphicsCommands::EndLightingPass() {
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
+
+    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+
+    cmd.endRendering();
+    cmd.endDebugUtilsLabelEXT();
 }
 
 void GraphicsCommands::BindPipeline(vk::raii::Pipeline& pipeline) {

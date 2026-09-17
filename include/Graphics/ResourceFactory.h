@@ -19,12 +19,11 @@ namespace SUN {
         vk::PrimitiveTopology primitiveTopology;
 
         std::vector<vk::Format> colorAttachmentFormats;
-
         std::vector<uint32_t> colorAttachmentLocations;
+
         vk::Format depthAttachmentFormat = vk::Format::eUndefined;
         vk::Format stencilAttachmentFormat = vk::Format::eUndefined;
 
-        std::vector<uint32_t> inputAttachmentIndices;
         bool useVertexInput = true;
     };
 
