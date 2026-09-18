@@ -2,7 +2,7 @@
 #include "Graphics/GraphicsContext.h"
 
 #include "Graphics/vertex.h"
-#include "Graphics/Window.h"
+#include "Core/Window.h"
 
 #include "Logger.h"
 

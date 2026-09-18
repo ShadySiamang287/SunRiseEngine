@@ -1,5 +1,5 @@
-#include "Graphics/Window.h"
-
+#include "Core/Window.h"
+#include "Core/Input.h"
 
 static void FrameBufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto windowManager = reinterpret_cast<SUN::Window*>(glfwGetWindowUserPointer(window));
@@ -14,8 +14,14 @@ void Window::Init() {
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     
     mWindowPtr = glfwCreateWindow(mWidth, mHeight, "Vulkan App", nullptr, nullptr);
+
     glfwSetWindowUserPointer(mWindowPtr, this);
+
     glfwSetFramebufferSizeCallback(mWindowPtr, FrameBufferResizeCallback);
+    glfwSetKeyCallback(mWindowPtr, Input::KeyCallback);
+    glfwSetCursorPosCallback(mWindowPtr, Input::CursorPosCallback);
+    glfwSetMouseButtonCallback(mWindowPtr, Input::MouseButtonCallback);
+    glfwSetScrollCallback(mWindowPtr, Input::ScrollCallback);
 }
 
 void Window::Shutdown(){

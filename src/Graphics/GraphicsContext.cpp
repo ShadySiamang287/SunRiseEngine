@@ -1,5 +1,5 @@
 #include "Graphics/GraphicsContext.h"
-#include "Graphics/Window.h"
+#include "Core/Window.h"
 #include "Logger.h"
 
 #define VK_USE_PLATFORM_WIN32_KHR

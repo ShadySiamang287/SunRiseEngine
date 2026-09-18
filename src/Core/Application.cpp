@@ -6,6 +6,7 @@
 #include "Graphics/Buffers.h"
 
 #include "Renderer/Renderer3D.h"
+#include "Core/Input.h"
 
 using namespace SUN;
 
@@ -14,6 +15,8 @@ Application::Application() {
 
     mWindowPtr = std::make_unique<Window>();
     mWindowPtr->Init();
+
+    Input::RegisterWindow(mWindowPtr.get());
 
     mGraphicsContextPtr = std::make_unique<GraphicsContext>();
     mGraphicsContextPtr->Init(mWindowPtr.get());
@@ -28,6 +31,7 @@ Application::Application() {
 
 void Application::Run() {
     while (!mWindowPtr->ShouldClose()){
+        Input::BeginFrame();
         mWindowPtr->PollEvents();
 
         for (auto& layer : mLayerStack) {

@@ -11,9 +11,10 @@ include(FetchContent)
 set(SOURCES 
     src/Core/LayerStack.cpp
     src/Core/Application.cpp
+    src/Core/Window.cpp
+    src/Core/Input.cpp
     src/SceneManagement/BaseScene.cpp
     src/SceneManagement/Systems/RenderSystem.cpp
-    src/Graphics/Window.cpp
     src/Graphics/GraphicsContext.cpp
     src/Graphics/ResourceFactory.cpp
     src/Graphics/ShaderCache.cpp
@@ -27,6 +28,9 @@ set(HEADERS
     include/EntryPoint.h
     include/Logger.h
     include/Core/Layer.h
+    include/Core/KeyCodes.h
+    include/Core/MouseCodes.h
+    include/Core/CursorMode.h
     include/SceneManagement/SceneManager.h
     include/SceneManagement/Entity.h
     include/SceneManagement/Components.h

@@ -1,10 +1,10 @@
 #pragma once
 #include <memory>
 
-#include "Graphics/Window.h"
 #include "Graphics/GraphicsContext.h"
 #include "Graphics/ResourceFactory.h"
 #include "Renderer/Renderer3D.h"
+#include "Core/Window.h"
 #include "Core/Layer.h"
 #include "LayerStack.h"
 
