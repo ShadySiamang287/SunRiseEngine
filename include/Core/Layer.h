@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Renderer/RenderingStructs.h"
+
 namespace SUN {
     class Layer {
     public:
@@ -9,6 +11,6 @@ namespace SUN {
         virtual void OnDetach() {}
 
         virtual void OnUpdate(const float& dt) {}
-        virtual void OnRender() {} 
+        virtual void OnRender(RenderContext& context) {} 
     };
 }

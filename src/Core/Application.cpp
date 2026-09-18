@@ -5,6 +5,8 @@
 #include "Graphics/GraphicsCommands.h"
 #include "Graphics/Buffers.h"
 
+#include "Renderer/Renderer3D.h"
+
 using namespace SUN;
 
 Application::Application() {
@@ -20,6 +22,8 @@ Application::Application() {
 
     GraphicsCommands::RegisterContext(mGraphicsContextPtr.get());
     Buffer::RegisterContext(mGraphicsContextPtr.get());
+
+    mRenderer3D = std::make_unique<Renderer3D>();
 }
 
 void Application::Run() {
@@ -34,8 +38,12 @@ void Application::Run() {
             continue;
         }
 
+        RenderContext context {
+            mRenderer3D.get()
+        };
+
         for (auto& layer : mLayerStack) {
-            layer->OnRender();
+            layer->OnRender(context);
         }
         GraphicsCommands::EndFrame();
     }

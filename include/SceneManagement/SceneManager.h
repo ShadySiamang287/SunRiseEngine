@@ -26,9 +26,9 @@ namespace SUN {
             mCurrentScene->Update(dt);
         }
 
-        void Render()
+        void Render(RenderContext& context)
         {
-            mCurrentScene->Render();
+            mCurrentScene->Render(context);
         }
 
     private:

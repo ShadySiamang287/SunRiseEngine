@@ -4,6 +4,7 @@
 #include "Graphics/Window.h"
 #include "Graphics/GraphicsContext.h"
 #include "Graphics/ResourceFactory.h"
+#include "Renderer/Renderer3D.h"
 #include "Core/Layer.h"
 #include "LayerStack.h"
 
@@ -11,6 +12,7 @@ namespace SUN{
     class Window;
     class GraphicsContext;
     class ResourceFactory;
+    class Renderer3D;
 
     class Application {
     public:
@@ -26,5 +28,6 @@ namespace SUN{
         std::unique_ptr<Window> mWindowPtr;
         std::unique_ptr<GraphicsContext> mGraphicsContextPtr;
         std::unique_ptr<ResourceFactory> mResourceFactoryPtr;
+        std::unique_ptr<Renderer3D> mRenderer3D;
     };
 }

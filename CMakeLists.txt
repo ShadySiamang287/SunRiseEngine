@@ -11,21 +11,28 @@ include(FetchContent)
 set(SOURCES 
     src/Core/LayerStack.cpp
     src/Core/Application.cpp
+    src/SceneManagement/BaseScene.cpp
+    src/SceneManagement/Systems/RenderSystem.cpp
     src/Graphics/Window.cpp
     src/Graphics/GraphicsContext.cpp
     src/Graphics/ResourceFactory.cpp
     src/Graphics/ShaderCache.cpp
     src/Graphics/GraphicsCommands.cpp
     src/Graphics/Buffers.cpp
+    src/Renderer/Renderer3D.cpp
+    src/Renderer/DeferredRenderer.cpp
 )
-
+    
 set(HEADERS
     include/EntryPoint.h
     include/Logger.h
     include/Core/Layer.h
-    include/SceneManagement/BaseScene.h
     include/SceneManagement/SceneManager.h
+    include/SceneManagement/Entity.h
+    include/SceneManagement/Components.h
     include/graphics/vertex.h
+    include/Renderer/RenderingStructs.h
+    include/Renderer/RenderQueue.h
 )
     
 find_package(Vulkan REQUIRED)
@@ -48,6 +55,13 @@ FetchContent_Declare(vma
     GIT_TAG        master
 )
 
+FetchContent_Declare(
+    EnTT
+    GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(EnTT)
+
 FetchContent_MakeAvailable(vma)
 
 add_library(SunriseEngine STATIC 
@@ -62,5 +76,6 @@ target_link_libraries(SunriseEngine PUBLIC
     glfw
     Vulkan::Vulkan
     GPUOpen::VulkanMemoryAllocator
+    EnTT::EnTT
 )
 target_compile_definitions(SunriseEngine PRIVATE VULKAN_HPP_NO_STRUCT_CONSTRUCTORS)
