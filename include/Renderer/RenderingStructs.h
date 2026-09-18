@@ -50,4 +50,17 @@ namespace SUN {
         glm::mat4 view;
         glm::mat4 proj;
     };
+
+    constexpr uint32_t MAX_OBJECTS = 16384;
+
+    struct ObjectData{
+        glm::mat4 model;
+        glm::mat4 normal;
+    };
+
+    struct DrawBatch {
+        const Mesh* mesh;
+        uint32_t firstInstance;
+        uint32_t instanceCount;
+    };
 }

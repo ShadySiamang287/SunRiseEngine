@@ -31,6 +31,7 @@ namespace SUN{
 
     struct PushConstants {
         vk::DeviceAddress frameDataAddress;
+        vk::DeviceAddress objectDataAddress;
     };
 
     struct AllocatedImage {

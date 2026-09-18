@@ -13,6 +13,6 @@ void RenderSystem::Render(BaseScene& scene, Renderer3D* renderer) {
         auto& transform = view.get<TransformComponent>(entity);
         auto& mesh = view.get<MeshComponent>(entity);
 
-        renderer->SubmitMesh(mesh.mesh, transform.GetTransform());
+        renderer->SubmitMesh(*mesh.mesh, transform.GetTransform());
     }
 }

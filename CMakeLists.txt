@@ -94,4 +94,4 @@ PUBLIC
     GPUOpen::VulkanMemoryAllocator
 )
 
-target_compile_definitions(SunriseEngine PRIVATE VULKAN_HPP_NO_STRUCT_CONSTRUCTORS)
+target_compile_definitions(SunriseEngine PUBLIC VULKAN_HPP_NO_STRUCT_CONSTRUCTORS)
