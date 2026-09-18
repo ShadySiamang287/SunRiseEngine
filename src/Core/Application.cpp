@@ -43,8 +43,11 @@ void Application::Run() {
         Input::BeginFrame();
         mWindowPtr->PollEvents();
 
+        mTimeManager.Update();
+        const float dt = mTimeManager.GetDeltaTime();
+
         for (auto& layer : mLayerStack) {
-            layer->OnUpdate(0.f);
+            layer->OnUpdate(dt);
         }
 
         if (!GraphicsCommands::BeginFrame()) {

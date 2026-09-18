@@ -6,6 +6,7 @@
 #include "Renderer/Renderer3D.h"
 #include "Core/Window.h"
 #include "Core/Layer.h"
+#include "Core/TimeManager.h"
 #include "LayerStack.h"
 
 namespace SUN{
@@ -30,6 +31,7 @@ namespace SUN{
         std::unique_ptr<Renderer3D> mRenderer3D;
     
         protected:
+        TimeManager mTimeManager;
         LayerStack mLayerStack;
     };
 }

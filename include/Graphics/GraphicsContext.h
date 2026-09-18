@@ -2,7 +2,7 @@
 #include <vulkan/vulkan_raii.hpp>
 
 #define VMA_VULKAN_VERSION 1004000 // Vulkan 1.4
-#include "vk_mem_alloc.h"
+#include <vk_mem_alloc.h>
 
 #include "Graphics/vertex.h"
 
@@ -67,7 +67,7 @@ namespace SUN{
 
         void CreateDesciptorPool();
 
-        void GraphicsContext::TransitionImageLayoutImmediate(
+        void TransitionImageLayoutImmediate(
             vk::Image image,
             vk::ImageLayout old_layout,
             vk::ImageLayout new_layout,
