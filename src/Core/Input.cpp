@@ -1,6 +1,6 @@
 #include "Core/Input.h"
 
-#include <Core./Window.h>
+#include "core/Window.h"
 
 using namespace SUN;
 
@@ -42,6 +42,27 @@ bool Input::IsKeyReleased(KeyCode key)
 {
     auto k = (int)key;
     return !sKeyboard.current[k] && sKeyboard.previous[k];
+}
+
+bool Input::IsMouseDown(MouseButton button)
+{
+    return sMouse.current[std::to_underlying(button)];
+}
+
+bool Input::IsMousePressed(MouseButton button)
+{
+    auto index = std::to_underlying(button);
+
+    return sMouse.current[index] &&
+            !sMouse.previous[index];
+}
+
+bool Input::IsMouseReleased(MouseButton button)
+{
+    auto index = std::to_underlying(button);
+
+    return !sMouse.current[index] &&
+            sMouse.previous[index];
 }
 
 glm::vec2 Input::GetMousePosition()

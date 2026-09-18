@@ -29,6 +29,15 @@ Application::Application() {
     mRenderer3D = std::make_unique<Renderer3D>();
 }
 
+Application::~Application() {
+    mGraphicsContextPtr->mDevice.waitIdle();
+    mLayerStack = {};
+    mRenderer3D.reset();
+    mGraphicsContextPtr->Shutdown();
+    mWindowPtr->Shutdown();
+    Logger::Shutdown();
+}
+
 void Application::Run() {
     while (!mWindowPtr->ShouldClose()){
         Input::BeginFrame();
@@ -51,12 +60,6 @@ void Application::Run() {
         }
         GraphicsCommands::EndFrame();
     }
-
-    mGraphicsContextPtr->mDevice.waitIdle();
-    mLayerStack = {};
-    mGraphicsContextPtr->Shutdown();
-    mWindowPtr->Shutdown();
-    Logger::Shutdown();
 }
 
 void Application::PushLayer(std::unique_ptr<Layer> layer){
