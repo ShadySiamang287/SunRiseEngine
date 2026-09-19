@@ -491,8 +491,8 @@ void GraphicsCommands::TransitionBloomDirection(){
 
     TransitionImageLayout(
         mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
-        vk::ImageLayout::eColorAttachmentOptimal,
         vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eColorAttachmentOptimal,
 
         {}, // src access
         vk::AccessFlagBits2::eColorAttachmentWrite,
@@ -534,8 +534,8 @@ void GraphicsCommands::EndBloom() {
 
     TransitionImageLayout(
         mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
-        vk::ImageLayout::eColorAttachmentOptimal,
         vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eColorAttachmentOptimal,
 
         {}, // src access
         vk::AccessFlagBits2::eColorAttachmentWrite,
