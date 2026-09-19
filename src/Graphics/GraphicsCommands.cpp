@@ -19,12 +19,14 @@ bool GraphicsCommands::BeginFrame(){
         return false;
     }
 
-    auto fenceResult = mContextPtr->mDevice.waitForFences(*mContextPtr->mInFlightFences[mContextPtr->mFrameIndex], vk::True, UINT64_MAX);
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+
+    auto fenceResult = mContextPtr->mDevice.waitForFences(*frame.inFlightFence, vk::True, UINT64_MAX);
     if (fenceResult != vk::Result::eSuccess) {
         throw std::runtime_error("failed to wait for fence!");
     } 
     
-    auto [result, imageIndex] = mContextPtr->mSwapChain.acquireNextImage(UINT64_MAX, *mContextPtr->mPresentCompleteSemaphores[mContextPtr->mFrameIndex], nullptr);
+    auto [result, imageIndex] = mContextPtr->mSwapChain.acquireNextImage(UINT64_MAX, *frame.imageAvailable, nullptr);
     if (result == vk::Result::eErrorOutOfDateKHR){
         mContextPtr->RecreateSwapChain();
         return false;
@@ -37,8 +39,8 @@ bool GraphicsCommands::BeginFrame(){
     }
 
     mContextPtr->mImageIndex = imageIndex;
-    mContextPtr->mDevice.resetFences(*mContextPtr->mInFlightFences[mContextPtr->mFrameIndex]);
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].reset();
+    mContextPtr->mDevice.resetFences(*frame.inFlightFence);
+    frame.commandBuffer.reset();
     return true;
 }
 
@@ -48,18 +50,20 @@ void GraphicsCommands::EndFrame(){
         return;
     }
 
-    auto frameIndex = mContextPtr->mFrameIndex;
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
+
     auto imageIndex = mContextPtr->mImageIndex;
 
     vk::SemaphoreSubmitInfo imageAvailable{
-        .semaphore = *mContextPtr->mPresentCompleteSemaphores[frameIndex],
+        .semaphore = frame.imageAvailable,
         .value = 0,
         .stageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
         .deviceIndex = 0
     };
 
     vk::CommandBufferSubmitInfo commandBufferInfo{
-        .commandBuffer = *mContextPtr->mCommandBuffers[frameIndex],
+        .commandBuffer = *cmd,
         .deviceMask = 0
     };
 
@@ -83,7 +87,7 @@ void GraphicsCommands::EndFrame(){
 
     mContextPtr->mGraphicsQueue.submit2(
         submitInfo,
-        *mContextPtr->mInFlightFences[frameIndex]
+        *frame.inFlightFence
     );
 
     const vk::PresentInfoKHR presentInfoKHR {
@@ -117,7 +121,7 @@ void GraphicsCommands::BeginDraw(){
         return;
     }
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].begin({});
+    mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer.begin({});
 }
 
 void GraphicsCommands::DrawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance) {
@@ -126,7 +130,8 @@ void GraphicsCommands::DrawIndexed(int indexCount, int instanceCount, int firstI
         return;
     }
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
 void GraphicsCommands::Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
@@ -134,8 +139,8 @@ void GraphicsCommands::Draw(int vertexCount, int instanceCount, int firstVertex,
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].draw(vertexCount, instanceCount, firstVertex, firstInstance);
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
 void GraphicsCommands::EndDraw(){
@@ -144,8 +149,8 @@ void GraphicsCommands::EndDraw(){
         return;
     }
 
-    
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
 
     TransitionImageLayout(
         mContextPtr->mSwapChainImages[mContextPtr->mImageIndex],
@@ -166,9 +171,9 @@ void GraphicsCommands::BeginGBufferPass() {
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
-    auto& gbuffer = mContextPtr->mGBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
+    auto& gbuffer = frame.gbuffer;
     vk::DebugUtilsLabelEXT label {
         .pLabelName = "Deffered pass",
     };
@@ -274,8 +279,9 @@ void GraphicsCommands::EndGBufferPass() {
         return;
     }
 
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
-    auto& gbuffer = mContextPtr->mGBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
+    auto& gbuffer = frame.gbuffer;
 
     cmd.endRendering();
 
@@ -333,7 +339,8 @@ void GraphicsCommands::BeginLightingPass() {
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
 
     vk::DebugUtilsLabelEXT label {
         .pLabelName = "Lighting pass",
@@ -343,7 +350,7 @@ void GraphicsCommands::BeginLightingPass() {
     
     std::array<vk::ImageMemoryBarrier2, 2> barriers {
         MakeImageBarrier(
-            mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].image,
+            frame.hdrTarget.image,
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::ImageLayout::eColorAttachmentOptimal,
 
@@ -354,14 +361,14 @@ void GraphicsCommands::BeginLightingPass() {
             vk::PipelineStageFlagBits2::eColorAttachmentOutput
         ),
         MakeImageBarrier(
-            mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
+            frame.bloomTargets.brightness.image,
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::ImageLayout::eColorAttachmentOptimal,
 
             {}, // src access
             vk::AccessFlagBits2::eColorAttachmentWrite,
 
-            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eNone,
             vk::PipelineStageFlagBits2::eColorAttachmentOutput
         )
     };
@@ -369,7 +376,7 @@ void GraphicsCommands::BeginLightingPass() {
     ImageBarriers(barriers);
 
     vk::RenderingAttachmentInfo brightAttachment {
-        .imageView = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.view,
+        .imageView = frame.bloomTargets.brightness.view,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
@@ -379,7 +386,7 @@ void GraphicsCommands::BeginLightingPass() {
     };
 
     vk::RenderingAttachmentInfo hdrAttachment{
-        .imageView = mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].view,
+        .imageView = frame.hdrTarget.view,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
@@ -412,24 +419,14 @@ void GraphicsCommands::EndLightingPass() {
         return;
     }
 
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
 
     cmd.endRendering();
 
-    std::array<vk::ImageMemoryBarrier2, 2> barriers {
+    std::array<vk::ImageMemoryBarrier2, 1> barriers {
         MakeImageBarrier(
-            mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].image,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::AccessFlagBits2::eShaderRead,
-
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        ),
-        MakeImageBarrier(
-            mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
+            frame.bloomTargets.brightness.image,
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal,
 
@@ -451,7 +448,8 @@ void GraphicsCommands::BeginBloom() {
         return;
     }
 
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
     
     vk::DebugUtilsLabelEXT label {
         .pLabelName = "Bloom Pass",
@@ -460,7 +458,7 @@ void GraphicsCommands::BeginBloom() {
     cmd.beginDebugUtilsLabelEXT(label);
 
     TransitionImageLayout(
-        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
+        frame.bloomTargets.ping.image,
         vk::ImageLayout::eShaderReadOnlyOptimal,
         vk::ImageLayout::eColorAttachmentOptimal,
 
@@ -472,7 +470,7 @@ void GraphicsCommands::BeginBloom() {
     );
 
     vk::RenderingAttachmentInfo attachment{
-        .imageView = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.view,
+        .imageView = frame.bloomTargets.ping.view,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
@@ -494,11 +492,11 @@ void GraphicsCommands::BeginBloom() {
 }
 
 void GraphicsCommands::PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal){
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
 
     BloomPushConstants constants {horizontal};
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pushConstants(*layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(BloomPushConstants), &constants);
+    cmd.pushConstants(*layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(BloomPushConstants), &constants);
 
 }
 
@@ -508,13 +506,14 @@ void GraphicsCommands::TransitionBloomDirection(){
         return;
     }
     
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
     cmd.endRendering();
 
 
     std::array<vk::ImageMemoryBarrier2, 2> barriers {
         MakeImageBarrier(
-            mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
+            frame.bloomTargets.ping.image,
 
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal,
@@ -526,7 +525,7 @@ void GraphicsCommands::TransitionBloomDirection(){
             vk::PipelineStageFlagBits2::eFragmentShader
         ),
         MakeImageBarrier(
-            mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
+            frame.bloomTargets.pong.image,
 
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::ImageLayout::eColorAttachmentOptimal,
@@ -542,7 +541,7 @@ void GraphicsCommands::TransitionBloomDirection(){
 
     
     vk::RenderingAttachmentInfo attachment{
-        .imageView = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.view,
+        .imageView = frame.bloomTargets.pong.view,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
@@ -569,11 +568,12 @@ void GraphicsCommands::EndBloom() {
         return;
     }
     
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
     cmd.endRendering();
 
     TransitionImageLayout(
-        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
+        frame.bloomTargets.pong.image,
         vk::ImageLayout::eColorAttachmentOptimal,
         vk::ImageLayout::eShaderReadOnlyOptimal,
 
@@ -594,7 +594,8 @@ void GraphicsCommands::BeginToneMapping() {
         return;
     }
 
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    auto& cmd = frame.commandBuffer;
 
     vk::DebugUtilsLabelEXT label {
         .pLabelName = "Tone Mapping",
@@ -602,17 +603,31 @@ void GraphicsCommands::BeginToneMapping() {
     label.setColor({0.32F, 0.32F, .76F, 1.F});
     cmd.beginDebugUtilsLabelEXT(label);
 
-    TransitionImageLayout(
-        mContextPtr->mSwapChainImages[mContextPtr->mImageIndex],
-        vk::ImageLayout::eUndefined,
-        vk::ImageLayout::eColorAttachmentOptimal,
+    std::array<vk::ImageMemoryBarrier2, 2> barriers {
+        MakeImageBarrier(
+            frame.hdrTarget.image,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        {}, // src access
-        vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
 
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits2::eFragmentShader
+        ),
+        MakeImageBarrier(
+            mContextPtr->mSwapChainImages[mContextPtr->mImageIndex],
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eColorAttachmentOptimal,
+
+            {}, // src access
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        )
+    };
+    ImageBarriers(barriers);
 
     vk::RenderingAttachmentInfo swapchain{
         .imageView = mContextPtr->mSwapChainImageViews[mContextPtr->mImageIndex],
@@ -644,7 +659,7 @@ void GraphicsCommands::EndToneMapping() {
         return;
     }
 
-    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
     cmd.endRendering();
 
     cmd.endDebugUtilsLabelEXT();
@@ -656,8 +671,8 @@ void GraphicsCommands::BindPipeline(vk::raii::Pipeline& pipeline) {
         return;
     }
     
-
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 }
 
 void GraphicsCommands::BindDescriptorSets(vk::raii::PipelineLayout& layout, const DescriptorResources& resources) {
@@ -665,13 +680,9 @@ void GraphicsCommands::BindDescriptorSets(vk::raii::PipelineLayout& layout, cons
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindDescriptorSets(
-        vk::PipelineBindPoint::eGraphics,
-        *layout,
-        0,
-        *resources.sets[mContextPtr->mFrameIndex],
-        {}
-    );
+
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *layout, 0, *resources.sets[mContextPtr->mFrameIndex], {});
 }
 
 void GraphicsCommands::PushConstants(vk::raii::PipelineLayout& layout, vk::ShaderStageFlags flags, const SUN::PushConstants& constants) {
@@ -680,7 +691,8 @@ void GraphicsCommands::PushConstants(vk::raii::PipelineLayout& layout, vk::Shade
         return;
     }
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pushConstants(*layout, flags, 0, sizeof(SUN::PushConstants), &constants);
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.pushConstants(*layout, flags, 0, sizeof(SUN::PushConstants), &constants);
 }
 
 void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
@@ -688,9 +700,9 @@ void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindVertexBuffers(0, buffer.GetHandle(), buffer.GetVertexOffset());
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), buffer.GetIndexType());
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.bindVertexBuffers(0, buffer.GetHandle(), buffer.GetVertexOffset());
+    cmd.bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), buffer.GetIndexType());
 }
 
 void GraphicsCommands::SetViewport(){
@@ -699,7 +711,8 @@ void GraphicsCommands::SetViewport(){
         return;
     }
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setViewport(
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.setViewport(
         0,
         vk::Viewport(
             0.f, 
@@ -717,8 +730,8 @@ void GraphicsCommands::SetScissor() {
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setScissor(
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.setScissor(
         0, vk::Rect2D(vk::Offset2D(0, 0), mContextPtr->mSwapChainExtent)
     );
 }
@@ -728,7 +741,8 @@ void GraphicsCommands::SetDepthTestEnable(bool state){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setDepthTestEnable(state);
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.setDepthTestEnable(state);
 }
 
 void GraphicsCommands::SetDepthWriteEnable(bool state){
@@ -736,7 +750,8 @@ void GraphicsCommands::SetDepthWriteEnable(bool state){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setDepthWriteEnable(state);
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.setDepthWriteEnable(state);
 }
 
 void GraphicsCommands::WriteLightingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler)  {
@@ -745,7 +760,8 @@ void GraphicsCommands::WriteLightingDescriptorSets(const DescriptorResources& re
         return;
     }
 
-    const auto& gbuffer = mContextPtr->mGBuffers[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    const auto& gbuffer = frame.gbuffer;
 
     vk::DescriptorImageInfo albedoInfo{
         .sampler = nullptr,
@@ -826,7 +842,8 @@ void GraphicsCommands::WriteToneMappingDescriptorSets(const DescriptorResources&
         return;
     }
 
-    const auto& hdr = mContextPtr->mHDRTargets[mContextPtr->mFrameIndex];
+    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+    const auto& hdr = frame.hdrTarget;
 
     vk::DescriptorImageInfo hdrInfo{
         .sampler = nullptr,
@@ -836,7 +853,7 @@ void GraphicsCommands::WriteToneMappingDescriptorSets(const DescriptorResources&
 
     vk::DescriptorImageInfo bloomInfo {
         .sampler = nullptr,
-        .imageView = *mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.view,
+        .imageView = *frame.bloomTargets.pong.view,
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
     };
 
@@ -887,8 +904,8 @@ void GraphicsCommands::WriteBloomDescriptorSets(const DescriptorResources& resou
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-
-    const auto& bloom = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex];
+    
+    const auto& bloom = mContextPtr->mFrames[mContextPtr->mFrameIndex].bloomTargets;
 
     vk::DescriptorImageInfo bloomInfo{
         .sampler = nullptr,
@@ -1010,7 +1027,7 @@ void GraphicsCommands::ImageBarriers(std::span<const vk::ImageMemoryBarrier2> ba
             barriers.data()
     };
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pipelineBarrier2(dependencyInfo);
+    mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer.pipelineBarrier2(dependencyInfo);
 }
 
 GraphicsContext* GraphicsCommands::mContextPtr = nullptr;

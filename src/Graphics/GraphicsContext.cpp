@@ -33,20 +33,27 @@ using namespace SUN;
 
 void GraphicsContext::Init(Window* window){
     mWindowPtr = window;
+
     CreateInstance();
     SetupDebugMessenger();
     CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
     CreateVMAAllocator();
+
     CreateSwapchain();
     CreateImageViews();
+
     CreateCommandPool();
     CreateCommandBuffers();
-    CreateSyncObjects();
+
+    CreateFrameSyncObjects();
+    CreateSwapchainSyncObjects();
+
     CreateGBuffers();
     CreateBloomTargets();
     CreateHDRS();
+
     CreateDesciptorPool();
 }
 
@@ -328,10 +335,14 @@ uint32_t GraphicsContext::ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR con
 
 void GraphicsContext::RecreateSwapChain() {
     mDevice.waitIdle();
+
     CleanupSwapChain();
 
     CreateSwapchain();
     CreateImageViews();
+
+    CreateSwapchainSyncObjects();
+
     CreateGBuffers();
     CreateBloomTargets();
     CreateHDRS();
@@ -341,6 +352,9 @@ void GraphicsContext::CleanupSwapChain() {
     DestroyHDRS();
     DestroyBloomTargets();
     DestroyGBuffers();
+
+    mRenderFinishedSemaphores.clear();
+
     mSwapChainImageViews.clear();
     mSwapChain = nullptr;
 }
@@ -381,20 +395,41 @@ void GraphicsContext::CreateCommandBuffers() {
         .commandBufferCount = MAX_FRAMES_IN_FLIGHT
     };
 
-    mCommandBuffers = vk::raii::CommandBuffers(mDevice, allocInfo);
+    vk::raii::CommandBuffers commandBuffers{
+        mDevice, allocInfo
+    };
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
+        mFrames[i].commandBuffer = std::move(commandBuffers[i]);
+    }
 }
 
-void GraphicsContext::CreateSyncObjects() {
-    assert(mPresentCompleteSemaphores.empty() && mRenderFinishedSemaphores.empty() && mInFlightFences.empty());
+void GraphicsContext::CreateFrameSyncObjects() {
+    
+    for (auto& frame : mFrames) {
+        frame.imageAvailable = vk::raii::Semaphore{
+            mDevice,
+            vk::SemaphoreCreateInfo{}
+        };
 
-    for (int i = 0 ; i < mSwapChainImages.size(); i++){ 
-        mRenderFinishedSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
+        frame.inFlightFence = vk::raii::Fence{
+            mDevice,
+            vk::FenceCreateInfo{
+                .flags = vk::FenceCreateFlagBits::eSignaled
+            }
+        };
     }
+}
 
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        mPresentCompleteSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
-        mInFlightFences.emplace_back(mDevice, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
-    } 
+void GraphicsContext::CreateSwapchainSyncObjects() {
+    mRenderFinishedSemaphores.clear();
+    mRenderFinishedSemaphores.reserve(mSwapChainImages.size());
+
+    for (size_t i = 0; i < mSwapChainImages.size(); ++i) {
+        mRenderFinishedSemaphores.emplace_back(
+            mDevice,
+            vk::SemaphoreCreateInfo{}
+        );
+    }
 }
 
 void GraphicsContext::CreateGBuffers() {
@@ -438,8 +473,8 @@ void GraphicsContext::CreateGBuffers() {
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
     };
 
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        GBuffer& buffer = mGBuffers[i];
+    for (auto& frame : mFrames) {
+        GBuffer& buffer = frame.gbuffer;
         VkImage tempAlbedo;
         vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&albedo), &allocInfo, &tempAlbedo, &buffer.Albedo.allocation, nullptr);
         buffer.Albedo.image = tempAlbedo;
@@ -530,8 +565,8 @@ void GraphicsContext::CreateGBuffers() {
 }
 
 void GraphicsContext::DestroyGBuffers() {
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
-        GBuffer& buffer = mGBuffers[i];
+    for (auto& frame : mFrames){
+        GBuffer& buffer = frame.gbuffer;
         buffer.Albedo.view = nullptr;
         buffer.Normal.view = nullptr;
         buffer.Depth.view = nullptr;
@@ -558,8 +593,8 @@ void GraphicsContext::CreateHDRS() {
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
     };
 
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        AllocatedImage& hdr = mHDRTargets[i];
+    for (auto& frame : mFrames) {
+        AllocatedImage& hdr = frame.hdrTarget;
         VkImage tempHDR;
         vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&hdrInfo), &allocInfo, &tempHDR, &hdr.allocation, nullptr);
         hdr.image = tempHDR;
@@ -591,8 +626,8 @@ void GraphicsContext::CreateHDRS() {
 }
 
 void GraphicsContext::DestroyHDRS() {
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
-        AllocatedImage& hdrImage = mHDRTargets[i];
+    for (auto& frame : mFrames){
+        AllocatedImage& hdrImage = frame.hdrTarget;
         hdrImage.view = nullptr;
         vmaDestroyImage(mAllocator, hdrImage.image, hdrImage.allocation);
     }
@@ -615,8 +650,8 @@ void GraphicsContext::CreateBloomTargets(){
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
     };
 
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){ 
-        BloomBuffers& bloomBuffer = mBloomTargets[i];
+    for (auto& frame : mFrames){ 
+        BloomBuffers& bloomBuffer = frame.bloomTargets;
         VkImage tempBright;
         vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&targetInfo), &allocInfo, &tempBright, &bloomBuffer.brightness.allocation, nullptr);
         bloomBuffer.brightness.image = tempBright;
@@ -737,8 +772,8 @@ void GraphicsContext::CreateBloomTargets(){
 }
 
 void GraphicsContext::DestroyBloomTargets() {
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
-        BloomBuffers& buffer = mBloomTargets[i];
+    for (auto& frame : mFrames){
+        BloomBuffers& buffer = frame.bloomTargets;
         buffer.brightness.view = nullptr;
         buffer.ping.view = nullptr;
         buffer.pong.view = nullptr;

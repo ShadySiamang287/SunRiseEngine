@@ -29,6 +29,16 @@ namespace SUN{
         AllocatedImage pong;
     };
 
+    struct FrameResources{
+        vk::raii::CommandBuffer commandBuffer = nullptr;
+        GBuffer gbuffer;
+        AllocatedImage hdrTarget;
+        BloomBuffers bloomTargets;
+
+        vk::raii::Semaphore imageAvailable = nullptr;
+        vk::raii::Fence inFlightFence = nullptr;
+    };
+
     class GraphicsContext{
     public:
         GraphicsContext() {}
@@ -66,7 +76,8 @@ namespace SUN{
 
         void CreateCommandBuffers();
 
-        void CreateSyncObjects();
+        void CreateFrameSyncObjects();
+        void CreateSwapchainSyncObjects();
 
         void CreateGBuffers();
         void DestroyGBuffers();
@@ -111,17 +122,11 @@ namespace SUN{
         
         vk::raii::CommandPool mCommandPool = nullptr;
 
-        std::vector<vk::raii::CommandBuffer> mCommandBuffers;
+        std::array<FrameResources, MAX_FRAMES_IN_FLIGHT> mFrames;
 
-
-        std::array<GBuffer, MAX_FRAMES_IN_FLIGHT> mGBuffers;
-        std::array<AllocatedImage, MAX_FRAMES_IN_FLIGHT> mHDRTargets;
-        std::array<BloomBuffers, MAX_FRAMES_IN_FLIGHT> mBloomTargets;
         vk::raii::DescriptorPool mDescriptorPool = nullptr;
-        
-        std::vector<vk::raii::Semaphore> mPresentCompleteSemaphores;
+
         std::vector<vk::raii::Semaphore> mRenderFinishedSemaphores;
-        std::vector<vk::raii::Fence> mInFlightFences;
         
         vk::raii::DebugUtilsMessengerEXT mDebugMessenger = nullptr;
         VmaAllocator mAllocator;
