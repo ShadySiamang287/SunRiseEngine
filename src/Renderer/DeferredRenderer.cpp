@@ -219,7 +219,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
 
     GraphicsCommands::EndGBufferPass();
     GraphicsCommands::BeginLightingPass();
-    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eFragment,  pConstants);
+    GraphicsCommands::PushConstants(mLightingLayout, vk::ShaderStageFlagBits::eFragment,  pConstants);
 
     GraphicsCommands::SetDepthTestEnable(false);
     GraphicsCommands::SetDepthWriteEnable(false);
