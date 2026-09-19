@@ -25,6 +25,11 @@ namespace SUN {
         static void BeginLightingPass();
         static void EndLightingPass();
 
+        static void BeginBloom();
+        static void PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal);
+        static void TransitionBloomDirection();
+        static void EndBloom();
+
         static void BeginToneMapping();
         static void EndToneMapping();
 
@@ -40,7 +45,7 @@ namespace SUN {
 
         static void WriteLightingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler);
         static void WriteToneMappingDescriptorSets(const DescriptorResources& resorces, vk::raii::Sampler& sampler);
-
+        static void WriteBloomDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler, bool horizontal);
 
         static vk::Format GetSwapchainFormat();
 

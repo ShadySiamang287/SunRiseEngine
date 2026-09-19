@@ -23,6 +23,12 @@ namespace SUN{
         AllocatedImage Depth;
     };
 
+    struct BloomBuffers{
+        AllocatedImage brightness;
+        AllocatedImage ping;
+        AllocatedImage pong;
+    };
+
     class GraphicsContext{
     public:
         GraphicsContext() {}
@@ -68,6 +74,9 @@ namespace SUN{
         void CreateHDRS();
         void DestroyHDRS();
 
+        void CreateBloomTargets();
+        void DestroyBloomTargets();
+
         void CreateDesciptorPool();
 
         void TransitionImageLayoutImmediate(
@@ -107,6 +116,7 @@ namespace SUN{
 
         std::array<GBuffer, MAX_FRAMES_IN_FLIGHT> mGBuffers;
         std::array<AllocatedImage, MAX_FRAMES_IN_FLIGHT> mHDRTargets;
+        std::array<BloomBuffers, MAX_FRAMES_IN_FLIGHT> mBloomTargets;
         vk::raii::DescriptorPool mDescriptorPool = nullptr;
         
         std::vector<vk::raii::Semaphore> mPresentCompleteSemaphores;

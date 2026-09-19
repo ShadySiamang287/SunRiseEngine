@@ -85,4 +85,11 @@ namespace SUN {
         glm::vec4 positionRange;
         glm::vec4 colorIntensity;
     };
+
+    struct BloomPushConstants{
+        bool horizontal;
+        bool padding0;
+        bool padding1;
+        bool padding2;
+    };
 }

@@ -68,6 +68,7 @@ DeferredRenderer::DeferredRenderer() {
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
+    
     toneMappingBindings[1] = {
         .binding = 1,
         .descriptorType = vk::DescriptorType::eSampler,
@@ -77,6 +78,9 @@ DeferredRenderer::DeferredRenderer() {
 
     mToneMappingDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
     mToneMappingLayout = ResourceFactory::CreatePipelineLayout(&mToneMappingDescriptors);
+
+    mBloomDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
+    mBloomLayout = ResourceFactory::CreatePipelineLayout(&mBloomDescriptors);
 
     mPipelineLayout = ResourceFactory::CreatePipelineLayout();
 
@@ -108,10 +112,12 @@ DeferredRenderer::DeferredRenderer() {
         .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
 
         .colorAttachmentFormats = {
+            vk::Format::eR16G16B16A16Sfloat,
             vk::Format::eR16G16B16A16Sfloat
         },
         .colorAttachmentLocations = {
-            0
+            0,
+            1
         },
         .useVertexInput = false
     };
@@ -134,6 +140,24 @@ DeferredRenderer::DeferredRenderer() {
         .useVertexInput = false
     };
     mToneMappingPipeline = ResourceFactory::CreatePipeline(tonemapping, mToneMappingLayout, "Tone mapping Pipeline");
+
+    PipelineConfig bloomConfig {
+        .vertexFile = "./shaders/lightVert.spv",
+        .vertexName = "lightVert",
+        .fragFile = "./shaders/bloom.spv",
+        .fragName = "bloom",
+
+        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
+
+        .colorAttachmentFormats = {
+            vk::Format::eR16G16B16A16Sfloat
+        },
+        .colorAttachmentLocations = {
+            0
+        },
+        .useVertexInput = false
+    };
+    mBloomPipeline = ResourceFactory::CreatePipeline(bloomConfig, mBloomLayout, "Bloom Pipeline");
 
     mFrameDataBuffer.Init(sizeof(FrameData));
     mObjectDataBuffer.Init(sizeof(ObjectData) * MAX_OBJECTS, true);
@@ -208,11 +232,34 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     );
 
     GraphicsCommands::EndLightingPass();
+    GraphicsCommands::WriteBloomDescriptorSets(mBloomDescriptors, mImageSampler, true);
+    GraphicsCommands::BeginBloom();
+    GraphicsCommands::BindPipeline(mBloomPipeline);
+    GraphicsCommands::PushBloomConstants(mBloomLayout, true);
+    GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomDescriptors);
+    GraphicsCommands::Draw(
+        3,  // fullscreen triangle
+        1,
+        0,
+        0
+    );
+    GraphicsCommands::TransitionBloomDirection();
+    GraphicsCommands::WriteBloomDescriptorSets(mBloomDescriptors, mImageSampler, false);
+    GraphicsCommands::PushBloomConstants(mBloomLayout, false);
+    GraphicsCommands::Draw(
+        3,  // fullscreen triangle
+        1,
+        0,
+        0
+    );
+    GraphicsCommands::EndBloom();
 
     GraphicsCommands::BeginToneMapping();
+    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  pConstants);
+
     GraphicsCommands::BindPipeline(mToneMappingPipeline);
     GraphicsCommands::BindDescriptorSets(mToneMappingLayout, mToneMappingDescriptors);
-        GraphicsCommands::Draw(
+    GraphicsCommands::Draw(
         3,  // fullscreen triangle
         1,
         0,

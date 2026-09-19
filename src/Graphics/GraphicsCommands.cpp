@@ -5,6 +5,7 @@
 #include "Core/Window.h"
 
 #include "Logger.h"
+#include "Renderer/RenderingStructs.h"
 
 using namespace SUN;
 
@@ -323,6 +324,28 @@ void GraphicsCommands::BeginLightingPass() {
         vk::PipelineStageFlagBits2::eColorAttachmentOutput
     );
 
+    TransitionImageLayout(
+        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eColorAttachmentOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    vk::RenderingAttachmentInfo brightAttachment {
+        .imageView = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue{
+            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        }
+    };
+
     vk::RenderingAttachmentInfo hdrAttachment{
         .imageView = mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].view,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -333,14 +356,19 @@ void GraphicsCommands::BeginLightingPass() {
         }
     };
 
+    std::array<vk::RenderingAttachmentInfo, 2> attachments {
+        hdrAttachment,
+        brightAttachment
+    };
+
     vk::RenderingInfo renderingInfo{
         .renderArea = {
             .offset = {0, 0},
             .extent = mContextPtr->mSwapChainExtent
         },
         .layerCount = 1,          // Required when viewMask == 0
-        .colorAttachmentCount = 1,
-        .pColorAttachments = &hdrAttachment,
+        .colorAttachmentCount = 2,
+        .pColorAttachments = attachments.data(),
     };
 
     cmd.beginRendering(renderingInfo);
@@ -367,6 +395,155 @@ void GraphicsCommands::EndLightingPass() {
         vk::PipelineStageFlagBits2::eTopOfPipe,
         vk::PipelineStageFlagBits2::eColorAttachmentOutput
     );
+
+    TransitionImageLayout(
+        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    cmd.endDebugUtilsLabelEXT();
+}
+
+void GraphicsCommands::BeginBloom() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    
+    vk::DebugUtilsLabelEXT label {
+        .pLabelName = "Bloom Pass",
+    };
+    label.setColor({0.32F, 0.76F, .76F, 1.F});
+    cmd.beginDebugUtilsLabelEXT(label);
+
+    TransitionImageLayout(
+        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eColorAttachmentOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    vk::RenderingAttachmentInfo attachment{
+        .imageView = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue{
+            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        }
+    };
+
+    vk::RenderingInfo renderingInfo{
+        .renderArea = {
+            .offset = {0, 0},
+            .extent = mContextPtr->mSwapChainExtent
+        },
+        .layerCount = 1,          // Required when viewMask == 0
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &attachment,
+    };
+    cmd.beginRendering(renderingInfo);
+}
+
+void GraphicsCommands::PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal){
+    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+
+    BloomPushConstants constants {horizontal};
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pushConstants(*layout, vk::ShaderStageFlagBits::eAll, 0, sizeof(BloomPushConstants), &constants);
+
+}
+
+void GraphicsCommands::TransitionBloomDirection(){
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    
+    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    cmd.endRendering();
+
+    TransitionImageLayout(
+        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eColorAttachmentOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    TransitionImageLayout(
+        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    vk::RenderingAttachmentInfo attachment{
+        .imageView = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue{
+            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        }
+    };
+
+    vk::RenderingInfo renderingInfo{
+        .renderArea = {
+            .offset = {0, 0},
+            .extent = mContextPtr->mSwapChainExtent
+        },
+        .layerCount = 1,          // Required when viewMask == 0
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &attachment,
+    };
+    cmd.beginRendering(renderingInfo);
+}
+
+void GraphicsCommands::EndBloom() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    
+    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    cmd.endRendering();
+
+    TransitionImageLayout(
+        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
 
     cmd.endDebugUtilsLabelEXT();
 }
@@ -633,6 +810,54 @@ void GraphicsCommands::WriteToneMappingDescriptorSets(const DescriptorResources&
                 vk::DescriptorType::eSampledImage,
 
             .pImageInfo = &hdrInfo
+        },
+
+        vk::WriteDescriptorSet{
+            .dstSet = *resources.sets[mContextPtr->mFrameIndex],
+            .dstBinding = 1,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eSampler,
+            .pImageInfo = &samplerInfo
+        }
+    };
+
+    mContextPtr->mDevice.updateDescriptorSets(writes, {});
+}
+
+void GraphicsCommands::WriteBloomDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler, bool horizontal)  {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    const auto& bloom = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex];
+
+    vk::DescriptorImageInfo bloomInfo{
+        .sampler = nullptr,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+    };
+    if (horizontal) {
+        bloomInfo.imageView = bloom.brightness.view;
+    } else {
+        bloomInfo.imageView = bloom.ping.view;
+    }
+
+    vk::DescriptorImageInfo samplerInfo{
+        .sampler = *sampler
+    };
+
+    std::array<vk::WriteDescriptorSet, 2> writes{
+        vk::WriteDescriptorSet{
+            .dstSet =
+                *resources.sets[mContextPtr->mFrameIndex],
+
+            .dstBinding = 0,
+            .descriptorCount = 1,
+
+            .descriptorType =
+                vk::DescriptorType::eSampledImage,
+
+            .pImageInfo = &bloomInfo
         },
 
         vk::WriteDescriptorSet{
