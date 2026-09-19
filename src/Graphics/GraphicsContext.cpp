@@ -20,7 +20,7 @@ const std::vector<char const*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
 
-std::vector<const char*> requiredDeviceExtension = {vk::KHRSwapchainExtensionName, vk::EXTDynamicRenderingUnusedAttachmentsExtensionName};
+std::vector<const char*> requiredDeviceExtension = {vk::KHRSwapchainExtensionName};
 
 
 #ifdef NDEBUG
@@ -158,8 +158,6 @@ bool GraphicsContext::isDeviceSuitable(vk::raii::PhysicalDevice const & physical
         return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics);
     });
 
-    std::vector<const char*> requiredDeviceExtension = {vk::KHRSwapchainExtensionName};
-
     auto availableDeviceExtensions = physicalDevice.enumerateDeviceExtensionProperties();
     bool supportsAllRequiredExtensions =
     std::ranges::all_of( requiredDeviceExtension,
@@ -173,16 +171,17 @@ bool GraphicsContext::isDeviceSuitable(vk::raii::PhysicalDevice const & physical
     auto features = physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2,
                                                         vk::PhysicalDeviceVulkan11Features,
                                                         vk::PhysicalDeviceVulkan12Features,
-                                                        vk::PhysicalDeviceVulkan13Features,
-                                                        vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+                                                        vk::PhysicalDeviceVulkan13Features>();
     bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+                            features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorIndexing &&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing &&
+                            features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending &&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound&&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount &&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
+                            features.template get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress &&
                             features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-                            features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2 &&
-                            features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+                            features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2;
 
     return supportsVulkan14 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
 }
@@ -208,10 +207,7 @@ void GraphicsContext::CreateLogicalDevice(){
     vk::StructureChain<vk::PhysicalDeviceFeatures2,
                     vk::PhysicalDeviceVulkan11Features,
                     vk::PhysicalDeviceVulkan12Features,
-                    vk::PhysicalDeviceVulkan13Features,
-                    vk::PhysicalDeviceVulkan14Features,
-                    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,
-                    vk::PhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT>
+                    vk::PhysicalDeviceVulkan13Features>
         featureChain = {
             {},                                    // vk::PhysicalDeviceFeatures2
             {.shaderDrawParameters = true},        // vk::PhysicalDeviceVulkan11Features
@@ -228,15 +224,6 @@ void GraphicsContext::CreateLogicalDevice(){
                 .synchronization2 = true,
                 .dynamicRendering = true,
             },            // vk::PhysicalDeviceVulkan13Features
-            {
-                .dynamicRenderingLocalRead = true
-            },// vk::PhysicalDeviceVulkan14Features
-            {
-                .extendedDynamicState = true
-            }, // vk::extended dynamic state
-            {
-                .dynamicRenderingUnusedAttachments = true
-            }
         };
     
     float                     queuePriority = 0.5f;

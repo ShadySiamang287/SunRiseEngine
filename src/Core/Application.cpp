@@ -32,7 +32,7 @@ Application::Application() {
 Application::~Application() {
     mGraphicsContextPtr->mDevice.waitIdle();
     mRenderer3D.reset();
-    mLayerStack.~LayerStack();
+    mLayerStack.Clear();
     mGraphicsContextPtr->Shutdown();
     mWindowPtr->Shutdown();
     Logger::Shutdown();

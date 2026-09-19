@@ -94,13 +94,22 @@ void GraphicsCommands::BeginDraw(){
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].begin({});
 }
 
-void GraphicsCommands::Draw(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance) {
+void GraphicsCommands::DrawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance) {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
 
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+}
+
+void GraphicsCommands::Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
 void GraphicsCommands::EndDraw(){
@@ -382,7 +391,7 @@ void GraphicsCommands::WriteLightingDescriptorSets(const DescriptorResources& re
     vk::DescriptorImageInfo depthInfo{
         .sampler = nullptr,
         .imageView = *gbuffer.Depth.view,
-        .imageLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
     };
 
     vk::DescriptorImageInfo samplerInfo{
@@ -470,7 +479,7 @@ void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
     }
 
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindVertexBuffers(0, buffer.GetHandle(), buffer.GetVertexOffset());
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), vk::IndexType::eUint32);
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), buffer.GetIndexType());
 }
 
 void GraphicsCommands::SetViewport(){

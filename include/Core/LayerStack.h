@@ -11,6 +11,8 @@ namespace SUN {
         void PushLayer(std::unique_ptr<Layer> layer);
         void PopLayer(Layer* layer);
 
+        void Clear();
+
         auto begin()  { return mLayers.begin(); }
         auto end()    { return mLayers.end(); }
         auto rbegin() { return mLayers.rbegin(); }

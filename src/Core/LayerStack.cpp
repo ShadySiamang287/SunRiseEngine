@@ -10,6 +10,14 @@ LayerStack::~LayerStack() {
     }
 }
 
+void LayerStack::Clear() {
+    for (auto& layer : mLayers) {
+        layer->OnDetach();
+    }
+
+    mLayers.clear();
+}
+
 void LayerStack::PushLayer(std::unique_ptr<Layer> layer) {
     layer->OnAttach();
     mLayers.push_back(std::move(layer));

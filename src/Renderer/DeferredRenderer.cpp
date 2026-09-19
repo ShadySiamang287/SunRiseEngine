@@ -139,7 +139,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
 
     for(const auto& batch : mBatches) {
         GraphicsCommands::BindGeometryBuffer(batch.mesh->buffer);
-        GraphicsCommands::Draw(batch.mesh->buffer.GetIndexCount(), batch.instanceCount, 0, 0, batch.firstInstance);
+        GraphicsCommands::DrawIndexed(batch.mesh->buffer.GetIndexCount(), batch.instanceCount, 0, 0, batch.firstInstance);
     }
 
     GraphicsCommands::EndGBufferPass();
@@ -153,7 +153,6 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     GraphicsCommands::Draw(
         3,  // fullscreen triangle
         1,
-        0,
         0,
         0
     );

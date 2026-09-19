@@ -15,7 +15,8 @@ namespace SUN {
         static void EndFrame();
 
         static void BeginDraw();
-        static void Draw(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance);
+        static void DrawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance);
+        static void Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
         static void EndDraw();
 
         static void BeginGBufferPass();
