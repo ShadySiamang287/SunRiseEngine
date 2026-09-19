@@ -478,26 +478,29 @@ void GraphicsCommands::TransitionBloomDirection(){
     cmd.endRendering();
 
     TransitionImageLayout(
-        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
+
         vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        {}, // src access
         vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::AccessFlagBits2::eShaderRead,
 
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eFragmentShader
     );
 
+    // Vertical pass is about to write pong.
     TransitionImageLayout(
-        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
+        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
+
         vk::ImageLayout::eShaderReadOnlyOptimal,
         vk::ImageLayout::eColorAttachmentOptimal,
 
-        {}, // src access
+        vk::AccessFlagBits2::eShaderRead,
         vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eFragmentShader,
         vk::PipelineStageFlagBits2::eColorAttachmentOutput
     );
 
@@ -534,11 +537,11 @@ void GraphicsCommands::EndBloom() {
 
     TransitionImageLayout(
         mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
         vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        {}, // src access
         vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::AccessFlagBits2::eShaderRead,
 
         vk::PipelineStageFlagBits2::eTopOfPipe,
         vk::PipelineStageFlagBits2::eColorAttachmentOutput
