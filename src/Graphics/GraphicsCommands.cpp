@@ -464,7 +464,7 @@ void GraphicsCommands::PushBloomConstants(vk::raii::PipelineLayout& layout, bool
 
     BloomPushConstants constants {horizontal};
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pushConstants(*layout, vk::ShaderStageFlagBits::eAll, 0, sizeof(BloomPushConstants), &constants);
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pushConstants(*layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(BloomPushConstants), &constants);
 
 }
 

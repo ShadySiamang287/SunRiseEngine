@@ -79,8 +79,9 @@ DeferredRenderer::DeferredRenderer() {
     mToneMappingDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
     mToneMappingLayout = ResourceFactory::CreatePipelineLayout(&mToneMappingDescriptors);
 
-    mBloomDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
-    mBloomLayout = ResourceFactory::CreatePipelineLayout(&mBloomDescriptors);
+    mBloomHorizontalDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
+    mBloomVerticalDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
+    mBloomLayout = ResourceFactory::CreatePipelineLayout(&mBloomHorizontalDescriptors);
 
     mPipelineLayout = ResourceFactory::CreatePipelineLayout();
 
@@ -209,7 +210,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     GraphicsCommands::SetDepthTestEnable(true);
     GraphicsCommands::SetDepthWriteEnable(true);
 
-    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  pConstants);
+    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex,  pConstants);
 
     for(const auto& batch : mBatches) {
         GraphicsCommands::BindGeometryBuffer(batch.mesh->buffer);
@@ -218,6 +219,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
 
     GraphicsCommands::EndGBufferPass();
     GraphicsCommands::BeginLightingPass();
+    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eFragment,  pConstants);
 
     GraphicsCommands::SetDepthTestEnable(false);
     GraphicsCommands::SetDepthWriteEnable(false);
@@ -232,11 +234,12 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     );
 
     GraphicsCommands::EndLightingPass();
-    GraphicsCommands::WriteBloomDescriptorSets(mBloomDescriptors, mImageSampler, true);
+    GraphicsCommands::WriteBloomDescriptorSets(mBloomHorizontalDescriptors, mImageSampler, true);
+    GraphicsCommands::WriteBloomDescriptorSets(mBloomVerticalDescriptors, mImageSampler, false);
     GraphicsCommands::BeginBloom();
     GraphicsCommands::BindPipeline(mBloomPipeline);
     GraphicsCommands::PushBloomConstants(mBloomLayout, true);
-    GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomDescriptors);
+    GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomHorizontalDescriptors);
     GraphicsCommands::Draw(
         3,  // fullscreen triangle
         1,
@@ -244,7 +247,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
         0
     );
     GraphicsCommands::TransitionBloomDirection();
-    GraphicsCommands::WriteBloomDescriptorSets(mBloomDescriptors, mImageSampler, false);
+    GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomVerticalDescriptors);
     GraphicsCommands::PushBloomConstants(mBloomLayout, false);
     GraphicsCommands::Draw(
         3,  // fullscreen triangle
@@ -255,7 +258,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     GraphicsCommands::EndBloom();
 
     GraphicsCommands::BeginToneMapping();
-    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  pConstants);
+    //GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  pConstants);
 
     GraphicsCommands::BindPipeline(mToneMappingPipeline);
     GraphicsCommands::BindDescriptorSets(mToneMappingLayout, mToneMappingDescriptors);

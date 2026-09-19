@@ -18,7 +18,8 @@ namespace SUN {
         void BuildBatches(const RenderQueue& renderQueue);
 
         DescriptorResources mLightingDescriptors; 
-        DescriptorResources mBloomDescriptors;
+        DescriptorResources mBloomHorizontalDescriptors;
+        DescriptorResources mBloomVerticalDescriptors;
         DescriptorResources mToneMappingDescriptors;
         vk::raii::Pipeline mGbufferPipeline = nullptr;
         vk::raii::Pipeline mLightingPipeline = nullptr;

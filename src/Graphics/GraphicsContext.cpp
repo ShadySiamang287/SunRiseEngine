@@ -671,7 +671,7 @@ void GraphicsContext::CreateBloomTargets(){
                 .layerCount = 1
             }
         };
-        bloomBuffer.pong.view = vk::raii::ImageView(mDevice, pingView);
+        bloomBuffer.ping.view = vk::raii::ImageView(mDevice, pingView);
 
         VkImage tempPong;
         vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&targetInfo), &allocInfo, &tempPong, &bloomBuffer.pong.allocation, nullptr);
@@ -699,7 +699,7 @@ void GraphicsContext::CreateBloomTargets(){
                 .layerCount = 1
             }
         };
-        bloomBuffer.ping.view = vk::raii::ImageView(mDevice, pongView);
+        bloomBuffer.pong.view = vk::raii::ImageView(mDevice, pongView);
     }
 }
 
