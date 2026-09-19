@@ -48,18 +48,43 @@ void GraphicsCommands::EndFrame(){
         return;
     }
 
-vk::PipelineStageFlags waitDestinationStageMask( vk::PipelineStageFlagBits::eColorAttachmentOutput );
-    const vk::SubmitInfo submitInfo{
-        .waitSemaphoreCount   = 1,
-        .pWaitSemaphores      = &*mContextPtr->mPresentCompleteSemaphores[mContextPtr->mFrameIndex],
-        .pWaitDstStageMask    = &waitDestinationStageMask,
-        .commandBufferCount   = 1,
-        .pCommandBuffers      = &*mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex],
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores    = &*mContextPtr->mRenderFinishedSemaphores[mContextPtr->mImageIndex]
+    auto frameIndex = mContextPtr->mFrameIndex;
+    auto imageIndex = mContextPtr->mImageIndex;
+
+    vk::SemaphoreSubmitInfo imageAvailable{
+        .semaphore = *mContextPtr->mPresentCompleteSemaphores[frameIndex],
+        .value = 0,
+        .stageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .deviceIndex = 0
     };
 
-    mContextPtr->mGraphicsQueue.submit(submitInfo, *mContextPtr->mInFlightFences[mContextPtr->mFrameIndex]);
+    vk::CommandBufferSubmitInfo commandBufferInfo{
+        .commandBuffer = *mContextPtr->mCommandBuffers[frameIndex],
+        .deviceMask = 0
+    };
+
+    vk::SemaphoreSubmitInfo renderFinished{
+        .semaphore = *mContextPtr->mRenderFinishedSemaphores[imageIndex],
+        .value = 0,
+        .stageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .deviceIndex = 0
+    };
+
+    vk::SubmitInfo2 submitInfo{
+        .waitSemaphoreInfoCount = 1,
+        .pWaitSemaphoreInfos = &imageAvailable,
+
+        .commandBufferInfoCount = 1,
+        .pCommandBufferInfos = &commandBufferInfo,
+
+        .signalSemaphoreInfoCount = 1,
+        .pSignalSemaphoreInfos = &renderFinished
+    };
+
+    mContextPtr->mGraphicsQueue.submit2(
+        submitInfo,
+        *mContextPtr->mInFlightFences[frameIndex]
+    );
 
     const vk::PresentInfoKHR presentInfoKHR {
         .waitSemaphoreCount = 1,
@@ -150,47 +175,48 @@ void GraphicsCommands::BeginGBufferPass() {
     label.setColor({0.5F, 0.76F, .32F, 1.F});
     cmd.beginDebugUtilsLabelEXT(label);
 
-    TransitionImageLayout(
-        gbuffer.Albedo.image,
+    std::array<vk::ImageMemoryBarrier2, 3> barriers{
+        MakeImageBarrier(
+            gbuffer.Albedo.image,
 
-        vk::ImageLayout::eShaderReadOnlyOptimal,
-        vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
 
-        vk::AccessFlagBits2::eShaderRead,
-        vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
+            vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        vk::PipelineStageFlagBits2::eFragmentShader,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+            vk::PipelineStageFlagBits2::eFragmentShader,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        ),
+        MakeImageBarrier(
+            gbuffer.Normal.image,
 
-    TransitionImageLayout(
-        gbuffer.Normal.image,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
 
-        vk::ImageLayout::eShaderReadOnlyOptimal,
-        vk::ImageLayout::eColorAttachmentOptimal,
+            vk::AccessFlagBits2::eShaderRead,
+            vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        vk::AccessFlagBits2::eShaderRead,
-        vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::PipelineStageFlagBits2::eFragmentShader,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        ),
+        MakeImageBarrier(
+            gbuffer.Depth.image,
 
-        vk::PipelineStageFlagBits2::eFragmentShader,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eDepthAttachmentOptimal,
 
-    TransitionImageLayout(
-        gbuffer.Depth.image,
+            vk::AccessFlagBits2::eShaderRead,
+            vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
 
-        vk::ImageLayout::eShaderReadOnlyOptimal,
-        vk::ImageLayout::eDepthAttachmentOptimal,
-
-        vk::AccessFlagBits2::eShaderRead,
-        vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-
-        vk::PipelineStageFlagBits2::eFragmentShader,
-        vk::PipelineStageFlagBits2::eEarlyFragmentTests |
+            vk::PipelineStageFlagBits2::eFragmentShader,
+            vk::PipelineStageFlagBits2::eEarlyFragmentTests |
             vk::PipelineStageFlagBits2::eLateFragmentTests,
 
-        vk::ImageAspectFlagBits::eDepth
-    );
+            vk::ImageAspectFlagBits::eDepth
+        )
+    };
+    ImageBarriers(barriers);
 
     vk::RenderingAttachmentInfo gbuffer0{
         .imageView = gbuffer.Albedo.view,
@@ -253,48 +279,51 @@ void GraphicsCommands::EndGBufferPass() {
 
     cmd.endRendering();
 
-    TransitionImageLayout(
-        gbuffer.Albedo.image,
+    std::array<vk::ImageMemoryBarrier2, 3> barriers{
+        MakeImageBarrier(
+            gbuffer.Albedo.image,
 
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        vk::AccessFlagBits2::eColorAttachmentWrite,
-        vk::AccessFlagBits2::eShaderRead,
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
 
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits2::eFragmentShader
-    );
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits2::eFragmentShader
+        ),
 
-    TransitionImageLayout(
-        gbuffer.Normal.image,
+        MakeImageBarrier(
+            gbuffer.Normal.image,
 
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        vk::AccessFlagBits2::eColorAttachmentWrite,
-        vk::AccessFlagBits2::eShaderRead,
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
 
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits2::eFragmentShader
-    );
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits2::eFragmentShader
+        ),
 
-    TransitionImageLayout(
-        gbuffer.Depth.image,
+        MakeImageBarrier(
+            gbuffer.Depth.image,
 
-        vk::ImageLayout::eDepthAttachmentOptimal,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eDepthAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-        vk::AccessFlagBits2::eShaderRead,
+            vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
 
-        vk::PipelineStageFlagBits2::eEarlyFragmentTests |
+            vk::PipelineStageFlagBits2::eEarlyFragmentTests |
             vk::PipelineStageFlagBits2::eLateFragmentTests,
 
-        vk::PipelineStageFlagBits2::eFragmentShader,
+            vk::PipelineStageFlagBits2::eFragmentShader,
 
-        vk::ImageAspectFlagBits::eDepth
-    );
+            vk::ImageAspectFlagBits::eDepth
+        )
+    };
+    ImageBarriers(barriers);
 
     cmd.endDebugUtilsLabelEXT();
 }
@@ -312,29 +341,32 @@ void GraphicsCommands::BeginLightingPass() {
     label.setColor({0.76F, 0.32F, .32F, 1.F});
     cmd.beginDebugUtilsLabelEXT(label);
     
-    TransitionImageLayout(
-        mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].image,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
-        vk::ImageLayout::eColorAttachmentOptimal,
+    std::array<vk::ImageMemoryBarrier2, 2> barriers {
+        MakeImageBarrier(
+            mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].image,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
 
-        {}, // src access
-        vk::AccessFlagBits2::eColorAttachmentWrite,
+            {}, // src access
+            vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        ),
+        MakeImageBarrier(
+            mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
 
-    TransitionImageLayout(
-        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
-        vk::ImageLayout::eColorAttachmentOptimal,
+            {}, // src access
+            vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        {}, // src access
-        vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        )
+    };
 
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+    ImageBarriers(barriers);
 
     vk::RenderingAttachmentInfo brightAttachment {
         .imageView = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.view,
@@ -384,29 +416,31 @@ void GraphicsCommands::EndLightingPass() {
 
     cmd.endRendering();
 
-    TransitionImageLayout(
-        mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].image,
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+    std::array<vk::ImageMemoryBarrier2, 2> barriers {
+        MakeImageBarrier(
+            mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].image,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        {}, // src access
-        vk::AccessFlagBits2::eColorAttachmentWrite,
+            {}, // src access
+            vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        ),
+        MakeImageBarrier(
+            mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
 
-    TransitionImageLayout(
-        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+            {}, // src access
+            vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        {}, // src access
-        vk::AccessFlagBits2::eColorAttachmentWrite,
-
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        )
+    };
+    ImageBarriers(barriers);
 
     cmd.endDebugUtilsLabelEXT();
 }
@@ -477,33 +511,36 @@ void GraphicsCommands::TransitionBloomDirection(){
     auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
     cmd.endRendering();
 
-    TransitionImageLayout(
-        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
 
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+    std::array<vk::ImageMemoryBarrier2, 2> barriers {
+        MakeImageBarrier(
+            mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].ping.image,
 
-        vk::AccessFlagBits2::eColorAttachmentWrite,
-        vk::AccessFlagBits2::eShaderRead,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits2::eFragmentShader
-    );
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
 
-    // Vertical pass is about to write pong.
-    TransitionImageLayout(
-        mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits2::eFragmentShader
+        ),
+        MakeImageBarrier(
+            mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.image,
 
-        vk::ImageLayout::eShaderReadOnlyOptimal,
-        vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
 
-        vk::AccessFlagBits2::eShaderRead,
-        vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
+            vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        vk::PipelineStageFlagBits2::eFragmentShader,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+            vk::PipelineStageFlagBits2::eFragmentShader,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        )
+    };
+    ImageBarriers(barriers);
 
+    
     vk::RenderingAttachmentInfo attachment{
         .imageView = mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.view,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -939,6 +976,55 @@ void GraphicsCommands::TransitionImageLayout(
     };
 
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pipelineBarrier2(dependency_info);
+}
+
+vk::ImageMemoryBarrier2 GraphicsCommands::MakeImageBarrier(
+                vk::Image image,
+                vk::ImageLayout oldLayout,
+                vk::ImageLayout newLayout,
+                vk::AccessFlags2 srcAccess,
+                vk::AccessFlags2 dstAccess,
+                vk::PipelineStageFlags2 srcStage,
+                vk::PipelineStageFlags2 dstStage,
+                vk::ImageAspectFlags aspect) {
+    return {
+        .srcStageMask = srcStage,
+        .srcAccessMask = srcAccess,
+
+        .dstStageMask = dstStage,
+        .dstAccessMask = dstAccess,
+
+        .oldLayout = oldLayout,
+        .newLayout = newLayout,
+
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+
+        .image = image,
+
+        .subresourceRange = {
+            .aspectMask = aspect,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    };
+}
+
+void GraphicsCommands::ImageBarriers(std::span<const vk::ImageMemoryBarrier2> barriers){
+    if (barriers.empty())
+        return;
+
+    vk::DependencyInfo dependencyInfo{
+        .imageMemoryBarrierCount =
+            static_cast<uint32_t>(barriers.size()),
+
+        .pImageMemoryBarriers =
+            barriers.data()
+    };
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pipelineBarrier2(dependencyInfo);
 }
 
 GraphicsContext* GraphicsCommands::mContextPtr = nullptr;

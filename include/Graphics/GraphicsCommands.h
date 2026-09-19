@@ -61,6 +61,18 @@ namespace SUN {
             vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor
         );
 
+        static vk::ImageMemoryBarrier2 MakeImageBarrier(
+                vk::Image image,
+                vk::ImageLayout oldLayout,
+                vk::ImageLayout newLayout,
+                vk::AccessFlags2 srcAccess,
+                vk::AccessFlags2 dstAccess,
+                vk::PipelineStageFlags2 srcStage,
+                vk::PipelineStageFlags2 dstStage,
+                vk::ImageAspectFlags aspect = vk::ImageAspectFlagBits::eColor); 
+
+        static void ImageBarriers(std::span<const vk::ImageMemoryBarrier2> barriers);
+
         static GraphicsContext* mContextPtr;
     };
 }
