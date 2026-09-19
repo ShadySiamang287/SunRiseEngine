@@ -3,6 +3,13 @@
 
 using namespace SUN;
 
+LayerStack::~LayerStack() {
+    for (auto& layer : mLayers) {
+        layer->OnDetach();
+        layer.reset();
+    }
+}
+
 void LayerStack::PushLayer(std::unique_ptr<Layer> layer) {
     layer->OnAttach();
     mLayers.push_back(std::move(layer));

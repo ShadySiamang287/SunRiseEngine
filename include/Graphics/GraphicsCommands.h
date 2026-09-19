@@ -33,7 +33,7 @@ namespace SUN {
         static void SetDepthTestEnable(bool state);
         static void SetDepthWriteEnable(bool state);
 
-        static void WriteLightingDescriptorSets(const DescriptorResources& resources);
+        static void WriteLightingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler);
 
         static vk::Format GetSwapchainFormat();
 

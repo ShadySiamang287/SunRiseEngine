@@ -174,47 +174,6 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
 
     vk::raii::Pipeline pipeline = nullptr;
 
-    // if (!config.inputAttachmentIndices.empty()) {
-    //     vk::RenderingInputAttachmentIndexInfo inputInfo{
-    //         .colorAttachmentCount =
-    //             static_cast<uint32_t>(config.inputAttachmentIndices.size()),
-    //         .pColorAttachmentInputIndices =
-    //             config.inputAttachmentIndices.data()
-    //     };
-
-    //     vk::StructureChain<
-    //         vk::GraphicsPipelineCreateInfo,
-    //         vk::RenderingAttachmentLocationInfo,
-    //         vk::RenderingInputAttachmentIndexInfo,
-    //         vk::PipelineRenderingCreateInfo
-    //     > chain{
-    //         graphicsInfo,
-    //         locationInfo,
-    //         inputInfo,
-    //         renderingInfo
-    //     };
-
-    //     pipeline = vk::raii::Pipeline(
-    //         mInstancePtr->mGraphicsContextPtr->mDevice,
-    //         nullptr,
-    //         chain.get<vk::GraphicsPipelineCreateInfo>());
-    // } else {
-    //     vk::StructureChain<
-    //         vk::GraphicsPipelineCreateInfo,
-    //         vk::RenderingAttachmentLocationInfo,
-    //         vk::PipelineRenderingCreateInfo
-    //     > chain{
-    //         graphicsInfo,
-    //         locationInfo,
-    //         renderingInfo
-    //     };
-
-    //     pipeline = vk::raii::Pipeline(
-    //         mInstancePtr->mGraphicsContextPtr->mDevice,
-    //         nullptr,
-    //         chain.get<vk::GraphicsPipelineCreateInfo>());
-    // }
-
     vk::StructureChain<
         vk::GraphicsPipelineCreateInfo,
         vk::RenderingAttachmentLocationInfo,
@@ -240,5 +199,48 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
 
     return std::move(pipeline);
 }
+
+vk::raii::Sampler ResourceFactory::CreateSampler(const SamplerConfig& config) {
+    if (!mInstancePtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "No resource factory created!"
+        );
+
+        return nullptr;
+    }
+
+    vk::SamplerCreateInfo samplerInfo{
+        .magFilter = config.magFilter,
+        .minFilter = config.minFilter,
+
+        .mipmapMode = config.mipmapMode,
+
+        .addressModeU = config.addressModeU,
+        .addressModeV = config.addressModeV,
+        .addressModeW = config.addressModeW,
+
+        .mipLodBias = config.mipLodBias,
+
+        .anisotropyEnable = config.anisotropy,
+        .maxAnisotropy = config.maxAnisotropy,
+
+        .compareEnable = config.compare,
+        .compareOp = config.compareOp,
+
+        .minLod = config.minLod,
+        .maxLod = config.maxLod,
+
+        .borderColor = config.borderColor,
+
+        .unnormalizedCoordinates = vk::False
+    };
+
+    return vk::raii::Sampler(
+        mInstancePtr->mGraphicsContextPtr->mDevice,
+        samplerInfo
+    );
+}
+
 
 ResourceFactory* ResourceFactory::mInstancePtr = nullptr;

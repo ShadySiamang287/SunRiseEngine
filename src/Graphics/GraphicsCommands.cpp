@@ -92,18 +92,6 @@ void GraphicsCommands::BeginDraw(){
     }
 
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].begin({});
-
-    TransitionImageLayout(
-        mContextPtr->mSwapChainImages[mContextPtr->mImageIndex],
-        vk::ImageLayout::eUndefined,
-        vk::ImageLayout::eColorAttachmentOptimal,
-
-        {}, // src access
-        vk::AccessFlagBits2::eColorAttachmentWrite,
-
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
 }
 
 void GraphicsCommands::Draw(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance) {
@@ -145,15 +133,58 @@ void GraphicsCommands::BeginGBufferPass() {
     }
 
     auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& gbuffer = mContextPtr->mGBuffers[mContextPtr->mFrameIndex];
     vk::DebugUtilsLabelEXT label {
         .pLabelName = "Deffered pass",
     };
     label.setColor({0.5F, 0.76F, .32F, 1.F});
     cmd.beginDebugUtilsLabelEXT(label);
 
+    TransitionImageLayout(
+        gbuffer.Albedo.image,
+
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eColorAttachmentOptimal,
+
+        vk::AccessFlagBits2::eShaderRead,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eFragmentShader,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    TransitionImageLayout(
+        gbuffer.Normal.image,
+
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eColorAttachmentOptimal,
+
+        vk::AccessFlagBits2::eShaderRead,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eFragmentShader,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    TransitionImageLayout(
+        gbuffer.Depth.image,
+
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eDepthAttachmentOptimal,
+
+        vk::AccessFlagBits2::eShaderRead,
+        vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eFragmentShader,
+        vk::PipelineStageFlagBits2::eEarlyFragmentTests |
+            vk::PipelineStageFlagBits2::eLateFragmentTests,
+
+        vk::ImageAspectFlagBits::eDepth
+    );
+
     vk::RenderingAttachmentInfo gbuffer0{
-        .imageView = mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Albedo.view,
-        .imageLayout = vk::ImageLayout::eRenderingLocalReadKHR,
+        .imageView = gbuffer.Albedo.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue{
@@ -162,8 +193,8 @@ void GraphicsCommands::BeginGBufferPass() {
     };
 
     vk::RenderingAttachmentInfo gbuffer1{
-        .imageView = mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Normal.view,
-        .imageLayout = vk::ImageLayout::eRenderingLocalReadKHR,
+        .imageView = gbuffer.Normal.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue{
@@ -172,8 +203,8 @@ void GraphicsCommands::BeginGBufferPass() {
     };
 
     vk::RenderingAttachmentInfo depth{
-        .imageView = mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Depth.view,
-        .imageLayout = vk::ImageLayout::eRenderingLocalReadKHR,
+        .imageView = gbuffer.Depth.view,
+        .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue{
@@ -208,8 +239,53 @@ void GraphicsCommands::EndGBufferPass() {
     }
 
     auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+    auto& gbuffer = mContextPtr->mGBuffers[mContextPtr->mFrameIndex];
 
     cmd.endRendering();
+
+    TransitionImageLayout(
+        gbuffer.Albedo.image,
+
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::AccessFlagBits2::eShaderRead,
+
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eFragmentShader
+    );
+
+    TransitionImageLayout(
+        gbuffer.Normal.image,
+
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::AccessFlagBits2::eShaderRead,
+
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eFragmentShader
+    );
+
+    TransitionImageLayout(
+        gbuffer.Depth.image,
+
+        vk::ImageLayout::eDepthAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+
+        vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+        vk::AccessFlagBits2::eShaderRead,
+
+        vk::PipelineStageFlagBits2::eEarlyFragmentTests |
+            vk::PipelineStageFlagBits2::eLateFragmentTests,
+
+        vk::PipelineStageFlagBits2::eFragmentShader,
+
+        vk::ImageAspectFlagBits::eDepth
+    );
+
     cmd.endDebugUtilsLabelEXT();
 }
 
@@ -225,6 +301,18 @@ void GraphicsCommands::BeginLightingPass() {
     };
     label.setColor({0.5F, 0.76F, .32F, 1.F});
     cmd.beginDebugUtilsLabelEXT(label);
+    
+    TransitionImageLayout(
+        mContextPtr->mSwapChainImages[mContextPtr->mImageIndex],
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eColorAttachmentOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
 
     vk::RenderingAttachmentInfo swapchain{
         .imageView = mContextPtr->mSwapChainImageViews[mContextPtr->mImageIndex],
@@ -247,53 +335,6 @@ void GraphicsCommands::BeginLightingPass() {
     };
 
     cmd.beginRendering(renderingInfo);
-
-    static const vk::ImageSubresourceRange colorRange{
-        .aspectMask = vk::ImageAspectFlagBits::eColor,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1
-    };
-
-        // G-buffer 0:
-    // ColorAttachment -> ShaderRead
-    vk::ImageMemoryBarrier2 barriers[2]{
-        {
-            .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-
-            .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
-            .dstAccessMask = vk::AccessFlagBits2::eInputAttachmentRead,
-
-            // IMPORTANT
-            .oldLayout = vk::ImageLayout::eRenderingLocalReadKHR,
-            .newLayout = vk::ImageLayout::eRenderingLocalReadKHR,
-
-            .image = mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Albedo.image,
-            .subresourceRange = colorRange
-        },
-        {
-            .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-
-            .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
-            .dstAccessMask = vk::AccessFlagBits2::eInputAttachmentRead,
-
-            .oldLayout = vk::ImageLayout::eRenderingLocalReadKHR,
-            .newLayout = vk::ImageLayout::eRenderingLocalReadKHR,
-
-            .image = mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Normal.image,
-            .subresourceRange = colorRange
-        }
-    };
-
-    vk::DependencyInfo dependency{
-        .imageMemoryBarrierCount = 2,
-        .pImageMemoryBarriers = barriers
-    };
-
-    cmd.pipelineBarrier2(dependency);
 }
 
 void GraphicsCommands::EndLightingPass() {
@@ -318,37 +359,81 @@ void GraphicsCommands::BindPipeline(vk::raii::Pipeline& pipeline) {
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 }
 
-void GraphicsCommands::WriteLightingDescriptorSets(const DescriptorResources& resources)  {
+void GraphicsCommands::WriteLightingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler)  {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
 
+    const auto& gbuffer = mContextPtr->mGBuffers[mContextPtr->mFrameIndex];
+
     vk::DescriptorImageInfo albedoInfo{
-        .imageView = *mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Albedo.view,
-        .imageLayout = vk::ImageLayout::eRenderingLocalReadKHR
+        .sampler = nullptr,
+        .imageView = *gbuffer.Albedo.view,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
     };
 
     vk::DescriptorImageInfo normalInfo{
-        .imageView = *mContextPtr->mGBuffers[mContextPtr->mFrameIndex].Normal.view,
-        .imageLayout = vk::ImageLayout::eRenderingLocalReadKHR
+        .sampler = nullptr,
+        .imageView = *gbuffer.Normal.view,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
     };
 
-    std::array<vk::WriteDescriptorSet, 2> writes{
+    vk::DescriptorImageInfo depthInfo{
+        .sampler = nullptr,
+        .imageView = *gbuffer.Depth.view,
+        .imageLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal
+    };
+
+    vk::DescriptorImageInfo samplerInfo{
+        .sampler = *sampler
+    };
+
+    std::array<vk::WriteDescriptorSet, 4> writes{
         vk::WriteDescriptorSet{
-            .dstSet = *resources.sets[mContextPtr->mFrameIndex],
+            .dstSet =
+                *resources.sets[mContextPtr->mFrameIndex],
+
             .dstBinding = 0,
             .descriptorCount = 1,
-            .descriptorType = vk::DescriptorType::eInputAttachment,
+
+            .descriptorType =
+                vk::DescriptorType::eSampledImage,
+
             .pImageInfo = &albedoInfo
         },
 
         vk::WriteDescriptorSet{
-            .dstSet = *resources.sets[mContextPtr->mFrameIndex],
+            .dstSet =
+                *resources.sets[mContextPtr->mFrameIndex],
+
             .dstBinding = 1,
             .descriptorCount = 1,
-            .descriptorType = vk::DescriptorType::eInputAttachment,
+
+            .descriptorType =
+                vk::DescriptorType::eSampledImage,
+
             .pImageInfo = &normalInfo
+        },
+
+        vk::WriteDescriptorSet{
+            .dstSet =
+                *resources.sets[mContextPtr->mFrameIndex],
+
+            .dstBinding = 2,
+            .descriptorCount = 1,
+
+            .descriptorType = vk::DescriptorType::eSampledImage,
+
+            .pImageInfo = &depthInfo
+        },
+
+        vk::WriteDescriptorSet{
+            .dstSet = *resources.sets[mContextPtr->mFrameIndex],
+            .dstBinding = 3,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eSampler,
+            .pImageInfo = &samplerInfo
         }
     };
 

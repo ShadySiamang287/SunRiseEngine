@@ -13,19 +13,51 @@
 using namespace SUN;
 
 DeferredRenderer::DeferredRenderer() {
-    std::array<vk::DescriptorSetLayoutBinding, 2> bindings;
+    std::array<vk::DescriptorSetLayoutBinding, 4> bindings;
     bindings[0] = {
         .binding = 0,
-        .descriptorType = vk::DescriptorType::eInputAttachment,
+        .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
     bindings[1] = {
         .binding = 1,
-        .descriptorType = vk::DescriptorType::eInputAttachment,
+        .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
+    bindings[2] = {
+        .binding = 2,
+        .descriptorType = vk::DescriptorType::eSampledImage,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+    bindings[3] = {
+        .binding = 3,
+        .descriptorType = vk::DescriptorType::eSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+
+    SamplerConfig gBufferSamplerConfig{
+        .minFilter = vk::Filter::eNearest,
+        .magFilter = vk::Filter::eNearest,
+
+        .mipmapMode = vk::SamplerMipmapMode::eNearest,
+
+        .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+
+        .minLod = 0.0f,
+        .maxLod = 0.0f,
+
+        .anisotropy = false,
+        .compare = false
+    };
+
+    mGBufferSampler =
+        ResourceFactory::CreateSampler(gBufferSamplerConfig);
 
     mLightingDescriptors = ResourceFactory::CreateDescriptorResources(bindings);
     mLightingLayout = ResourceFactory::CreatePipelineLayout(&mLightingDescriptors);
@@ -92,7 +124,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     }
 
     GraphicsCommands::BeginDraw();
-    GraphicsCommands::WriteLightingDescriptorSets(mLightingDescriptors);
+    GraphicsCommands::WriteLightingDescriptorSets(mLightingDescriptors, mGBufferSampler);
     GraphicsCommands::BeginGBufferPass();
 
     GraphicsCommands::SetViewport();
@@ -107,7 +139,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
 
     for(const auto& batch : mBatches) {
         GraphicsCommands::BindGeometryBuffer(batch.mesh->buffer);
-        GraphicsCommands::Draw(batch.mesh->indexCount, batch.instanceCount, 0, 0, batch.firstInstance);
+        GraphicsCommands::Draw(batch.mesh->buffer.GetIndexCount(), batch.instanceCount, 0, 0, batch.firstInstance);
     }
 
     GraphicsCommands::EndGBufferPass();

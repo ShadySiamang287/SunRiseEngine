@@ -43,7 +43,6 @@ void GraphicsContext::Init(Window* window){
     CreateImageViews();
     CreateCommandPool();
     CreateCommandBuffers();
-    CreateCommandBuffers();
     CreateSyncObjects();
     CreateGBuffers();
     CreateDesciptorPool();
@@ -153,7 +152,7 @@ void GraphicsContext::PickPhysicalDevice() {
 }
 
 bool GraphicsContext::isDeviceSuitable(vk::raii::PhysicalDevice const & physicalDevice){
-    bool supportsVulkan13 = physicalDevice.getProperties2().properties.apiVersion >= vk::ApiVersion13;
+    bool supportsVulkan14 = physicalDevice.getProperties2().properties.apiVersion >= vk::ApiVersion14;
     auto queueFamiles = physicalDevice.getQueueFamilyProperties();
     bool supportsGraphics = std::ranges::any_of(queueFamiles, [](auto const& qfp) {
         return !!(qfp.queueFlags & vk::QueueFlagBits::eGraphics);
@@ -185,7 +184,7 @@ bool GraphicsContext::isDeviceSuitable(vk::raii::PhysicalDevice const & physical
                             features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2 &&
                             features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
-    return supportsVulkan13 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
+    return supportsVulkan14 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
 }
 
 void GraphicsContext::CreateLogicalDevice(){
@@ -415,7 +414,7 @@ void GraphicsContext::CreateGBuffers() {
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
         .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eInputAttachment
+        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
     };
 
     const vk::ImageCreateInfo normal {
@@ -427,7 +426,7 @@ void GraphicsContext::CreateGBuffers() {
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
         .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eInputAttachment
+        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
     };
 
     const vk::ImageCreateInfo depth {
@@ -439,7 +438,7 @@ void GraphicsContext::CreateGBuffers() {
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
         .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eInputAttachment
+        .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled
     };
 
     VmaAllocationCreateInfo allocInfo {
@@ -455,11 +454,11 @@ void GraphicsContext::CreateGBuffers() {
         TransitionImageLayoutImmediate(
             buffer.Albedo.image,
             vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eRenderingLocalReadKHR,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
             {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
             vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+            vk::PipelineStageFlagBits2::eFragmentShader
         );
 
         vk::ImageViewCreateInfo albedoView{
@@ -483,11 +482,11 @@ void GraphicsContext::CreateGBuffers() {
         TransitionImageLayoutImmediate(
             buffer.Normal.image,
             vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eRenderingLocalReadKHR,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
             {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
             vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+            vk::PipelineStageFlagBits2::eFragmentShader
         );
 
         vk::ImageViewCreateInfo normalView{
@@ -511,11 +510,11 @@ void GraphicsContext::CreateGBuffers() {
         TransitionImageLayoutImmediate(
             buffer.Depth.image,
             vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eRenderingLocalReadKHR,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
             {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
             vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits2::eFragmentShader,
             vk::ImageAspectFlagBits::eDepth
         );
 
@@ -540,6 +539,9 @@ void GraphicsContext::CreateGBuffers() {
 void GraphicsContext::DestroyGBuffers() {
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
         GBuffer& buffer = mGBuffers[i];
+        buffer.Albedo.view = nullptr;
+        buffer.Normal.view = nullptr;
+        buffer.Depth.view = nullptr;
         vmaDestroyImage(mAllocator, buffer.Albedo.image, buffer.Albedo.allocation);
         vmaDestroyImage(mAllocator, buffer.Normal.image, buffer.Normal.allocation);
         vmaDestroyImage(mAllocator, buffer.Depth.image, buffer.Depth.allocation);
@@ -548,7 +550,8 @@ void GraphicsContext::DestroyGBuffers() {
 
 void GraphicsContext::CreateDesciptorPool(){
     std::vector<vk::DescriptorPoolSize> poolSizes = {
-        {vk::DescriptorType::eInputAttachment, 8}
+        { vk::DescriptorType::eSampledImage, 64 },
+        { vk::DescriptorType::eSampler,      16 }
     };
 
     vk::DescriptorPoolCreateInfo poolInfo {

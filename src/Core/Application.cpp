@@ -31,8 +31,8 @@ Application::Application() {
 
 Application::~Application() {
     mGraphicsContextPtr->mDevice.waitIdle();
-    mLayerStack = {};
     mRenderer3D.reset();
+    mLayerStack.~LayerStack();
     mGraphicsContextPtr->Shutdown();
     mWindowPtr->Shutdown();
     Logger::Shutdown();

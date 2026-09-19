@@ -19,6 +19,8 @@ namespace SUN {
         vk::raii::PipelineLayout mPipelineLayout = nullptr;
         vk::raii::PipelineLayout mLightingLayout = nullptr;
 
+        vk::raii::Sampler mGBufferSampler = nullptr;
+
         ShaderBuffer mFrameDataBuffer;
         ShaderBuffer mObjectDataBuffer;
 

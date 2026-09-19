@@ -38,8 +38,7 @@ namespace SUN {
     };
 
     struct Mesh{
-        GeometryBuffer buffer;
-        uint32_t indexCount;  
+        GeometryBuffer buffer; 
     };
 
     struct RenderContext {

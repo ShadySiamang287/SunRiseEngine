@@ -7,6 +7,7 @@ namespace SUN {
     class Layer;
     class LayerStack {
     public:
+        ~LayerStack();
         void PushLayer(std::unique_ptr<Layer> layer);
         void PopLayer(Layer* layer);
 
