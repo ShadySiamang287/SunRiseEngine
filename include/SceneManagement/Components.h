@@ -36,4 +36,15 @@ namespace SUN{
     struct MeshComponent {
         std::shared_ptr<Mesh> mesh;
     };
+
+    struct DirectionalLightComponent {
+        glm::vec3 Colour{1.f};
+        float intensity;
+    };
+
+    struct PointLightComponent{
+        glm::vec3 Colour{1.f};
+        float intensity;
+        float range = 10.f;
+    };
 }

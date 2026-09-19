@@ -15,10 +15,21 @@ namespace SUN {
             const glm::mat4& Transform
         );
 
+        void SubmitDirectionalLight(
+            const GPUDirectionalLight& light
+        );
+
+        void SubmitPointLight(
+            const GPUPointLight& light
+        );
+
         void EndScene(RenderContext& context);
     private:
         RenderQueue mRenderQueue;
         const Camera* mCamera = nullptr;
         DeferredRenderer mDeferredRenderer;
+
+        std::vector<GPUDirectionalLight> mDirectionalLights;
+        std::vector<GPUPointLight> mPointLights;
     };
 }

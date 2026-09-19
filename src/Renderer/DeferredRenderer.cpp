@@ -103,20 +103,35 @@ DeferredRenderer::DeferredRenderer() {
 
     mFrameDataBuffer.Init(sizeof(FrameData));
     mObjectDataBuffer.Init(sizeof(ObjectData) * MAX_OBJECTS, true);
+    mDirectionalLightDataBuffer.Init(sizeof(GPUDirectionalLight) * MAX_DIRECTIONAL_LIGHTS, true);
+    mPointLightDataBuffer.Init(sizeof(GPUPointLight) * MAX_POINT_LIGHTS, true);
+
 
     mSortOrder.reserve(MAX_OBJECTS);
     mObjects.reserve(MAX_OBJECTS);
     mBatches.reserve(256);
 }
 
-void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* cam) {
+void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* cam,
+    std::span<const GPUDirectionalLight> directionalLights,
+    std::span<const GPUPointLight> pointLights) {
     mFrameData.view = cam->GetViewMatrix();
+    mFrameData.inverseView = glm::inverse(mFrameData.view);
     mFrameData.proj = cam->GetProjectionMatrix();
+    mFrameData.inverseProjection = glm::inverse(mFrameData.proj);
+    mFrameData.cameraPosition = {cam->Position, 1.f};
+    mFrameData.directionalLightCount = directionalLights.size();
+    mFrameData.pointLightCount = pointLights.size();
+
     PushConstants pConstants {
         mFrameDataBuffer.GetDeviceAddress(),
-        mObjectDataBuffer.GetDeviceAddress()
+        mObjectDataBuffer.GetDeviceAddress(),
+        mDirectionalLightDataBuffer.GetDeviceAddress(),
+        mPointLightDataBuffer.GetDeviceAddress()
     };
     mFrameDataBuffer.Upload(&mFrameData, sizeof(FrameData));
+    mDirectionalLightDataBuffer.Upload(directionalLights.data(), sizeof(GPUDirectionalLight) * directionalLights.size());
+    mPointLightDataBuffer.Upload(pointLights.data(), sizeof(GPUPointLight) * pointLights.size());
 
     BuildBatches(renderQueue);
     if (!mObjects.empty()) {

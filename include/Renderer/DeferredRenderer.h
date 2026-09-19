@@ -3,12 +3,16 @@
 #include "Renderer/RenderingStructs.h"
 #include "Renderer/RenderQueue.h"
 
+#include <span>
+
 namespace SUN {
     class DeferredRenderer {
     public:
         DeferredRenderer();
 
-        void Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* cam);
+        void Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* ca,
+            std::span<const GPUDirectionalLight> directionalLights,
+            std::span<const GPUPointLight> pointLightsm);
 
     private:
         void BuildBatches(const RenderQueue& renderQueue);
@@ -23,6 +27,8 @@ namespace SUN {
 
         ShaderBuffer mFrameDataBuffer;
         ShaderBuffer mObjectDataBuffer;
+        ShaderBuffer mDirectionalLightDataBuffer;
+        ShaderBuffer mPointLightDataBuffer;
 
         std::vector<uint32_t> mSortOrder;
         std::vector<ObjectData> mObjects;

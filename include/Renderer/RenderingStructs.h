@@ -48,6 +48,15 @@ namespace SUN {
     struct FrameData {
         glm::mat4 view;
         glm::mat4 proj;
+        glm::mat4 inverseView;
+        glm::mat4 inverseProjection;
+
+        glm::vec4 cameraPosition;
+
+        uint32_t directionalLightCount;
+        uint32_t pointLightCount;
+        uint32_t padding0;
+        uint32_t padding1;
     };
 
     constexpr uint32_t MAX_OBJECTS = 16384;
@@ -61,5 +70,19 @@ namespace SUN {
         const Mesh* mesh;
         uint32_t firstInstance;
         uint32_t instanceCount;
+    };
+
+    constexpr uint32_t MAX_DIRECTIONAL_LIGHTS = 32;
+
+    struct GPUDirectionalLight {
+        glm::vec4 directionIntensity;
+        glm::vec4 color;
+    };
+
+    constexpr uint32_t MAX_POINT_LIGHTS = 32;
+    
+    struct GPUPointLight {
+        glm::vec4 positionRange;
+        glm::vec4 colorIntensity;
     };
 }

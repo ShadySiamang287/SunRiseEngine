@@ -23,8 +23,8 @@ namespace SUN{
         {
             return {{
                 {.location = 0, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, pos)},
-                {.location = 2, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, normal)},
-                {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, colour)},
+                {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, normal)},
+                {.location = 2, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, colour)},
                 }};
             }
     };
@@ -32,6 +32,8 @@ namespace SUN{
     struct PushConstants {
         vk::DeviceAddress frameDataAddress;
         vk::DeviceAddress objectDataAddress;
+        vk::DeviceAddress directionalLightDataAddress;
+        vk::DeviceAddress pointLightDataAddress;
     };
 
     struct AllocatedImage {

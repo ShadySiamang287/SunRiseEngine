@@ -494,7 +494,9 @@ void GraphicsCommands::SetViewport(){
             0.f, 
             static_cast<float>(mContextPtr->mSwapChainExtent.height),
             static_cast<float>(mContextPtr->mSwapChainExtent.width), 
-            -static_cast<float>(mContextPtr->mSwapChainExtent.height)
+            -static_cast<float>(mContextPtr->mSwapChainExtent.height),
+            0.f,
+            1.f
         )
     );
 }
