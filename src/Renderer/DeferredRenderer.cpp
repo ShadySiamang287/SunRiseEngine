@@ -61,7 +61,7 @@ DeferredRenderer::DeferredRenderer() {
     mLightingDescriptors = ResourceFactory::CreateDescriptorResources(lightingBindings);
     mLightingLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mLightingDescriptors);
 
-    std::array<vk::DescriptorSetLayoutBinding, 2> toneMappingBindings;
+    std::array<vk::DescriptorSetLayoutBinding, 3> toneMappingBindings;
     toneMappingBindings[0] = {
         .binding = 0,
         .descriptorType = vk::DescriptorType::eSampledImage,
@@ -71,6 +71,28 @@ DeferredRenderer::DeferredRenderer() {
     
     toneMappingBindings[1] = {
         .binding = 1,
+        .descriptorType = vk::DescriptorType::eSampledImage,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+
+    toneMappingBindings[2] = {
+        .binding = 2,
+        .descriptorType = vk::DescriptorType::eSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+
+    std::array<vk::DescriptorSetLayoutBinding, 2> bloomMappingBindings;
+    bloomMappingBindings[0] = {
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eSampledImage,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+    
+    bloomMappingBindings[1] = {
+        .binding = 1,
         .descriptorType = vk::DescriptorType::eSampler,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
@@ -79,8 +101,8 @@ DeferredRenderer::DeferredRenderer() {
     mToneMappingDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
     mToneMappingLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mToneMappingDescriptors);
 
-    mBloomHorizontalDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
-    mBloomVerticalDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
+    mBloomHorizontalDescriptors = ResourceFactory::CreateDescriptorResources(bloomMappingBindings);
+    mBloomVerticalDescriptors = ResourceFactory::CreateDescriptorResources(bloomMappingBindings);
     mBloomLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(BloomPushConstants), &mBloomHorizontalDescriptors);
 
     mPipelineLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eVertex, sizeof(PushConstants));

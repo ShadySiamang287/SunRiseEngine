@@ -430,10 +430,10 @@ void GraphicsCommands::BeginBloom() {
         vk::ImageLayout::eShaderReadOnlyOptimal,
         vk::ImageLayout::eColorAttachmentOptimal,
 
-        {}, // src access
+        vk::AccessFlagBits2::eShaderRead,
         vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eFragmentShader,
         vk::PipelineStageFlagBits2::eColorAttachmentOutput
     );
 
@@ -543,8 +543,8 @@ void GraphicsCommands::EndBloom() {
         vk::AccessFlagBits2::eColorAttachmentWrite,
         vk::AccessFlagBits2::eShaderRead,
 
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eFragmentShader
     );
 
 
@@ -797,11 +797,17 @@ void GraphicsCommands::WriteToneMappingDescriptorSets(const DescriptorResources&
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
     };
 
+    vk::DescriptorImageInfo bloomInfo {
+        .sampler = nullptr,
+        .imageView = *mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].pong.view,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+    };
+
     vk::DescriptorImageInfo samplerInfo{
         .sampler = *sampler
     };
 
-    std::array<vk::WriteDescriptorSet, 2> writes{
+    std::array<vk::WriteDescriptorSet, 3> writes{
         vk::WriteDescriptorSet{
             .dstSet =
                 *resources.sets[mContextPtr->mFrameIndex],
@@ -813,11 +819,23 @@ void GraphicsCommands::WriteToneMappingDescriptorSets(const DescriptorResources&
                 vk::DescriptorType::eSampledImage,
 
             .pImageInfo = &hdrInfo
+        },     
+       vk::WriteDescriptorSet{
+            .dstSet =
+                *resources.sets[mContextPtr->mFrameIndex],
+
+            .dstBinding = 1,
+            .descriptorCount = 1,
+
+            .descriptorType =
+                vk::DescriptorType::eSampledImage,
+
+            .pImageInfo = &bloomInfo
         },
 
         vk::WriteDescriptorSet{
             .dstSet = *resources.sets[mContextPtr->mFrameIndex],
-            .dstBinding = 1,
+            .dstBinding = 2,
             .descriptorCount = 1,
             .descriptorType = vk::DescriptorType::eSampler,
             .pImageInfo = &samplerInfo

@@ -700,6 +700,39 @@ void GraphicsContext::CreateBloomTargets(){
             }
         };
         bloomBuffer.pong.view = vk::raii::ImageView(mDevice, pongView);
+
+        vk::DebugUtilsObjectNameInfoEXT nameInfo{
+            .objectType = vk::ObjectType::eImage,
+            .objectHandle =
+                reinterpret_cast<uint64_t>(
+                    static_cast<VkImage>(bloomBuffer.ping.image)
+                ),
+            .pObjectName = "Bloom Brightness"
+        };
+
+        mDevice.setDebugUtilsObjectNameEXT(nameInfo);
+
+        nameInfo = {
+            .objectType = vk::ObjectType::eImage,
+            .objectHandle =
+                reinterpret_cast<uint64_t>(
+                    static_cast<VkImage>(bloomBuffer.ping.image)
+                ),
+            .pObjectName = "Bloom Ping"
+        };
+
+        mDevice.setDebugUtilsObjectNameEXT(nameInfo);
+
+        nameInfo = {
+            .objectType = vk::ObjectType::eImage,
+            .objectHandle =
+                reinterpret_cast<uint64_t>(
+                    static_cast<VkImage>(bloomBuffer.pong.image)
+                ),
+            .pObjectName = "Bloom Pong"
+        };
+
+        mDevice.setDebugUtilsObjectNameEXT(nameInfo);
     }
 }
 
