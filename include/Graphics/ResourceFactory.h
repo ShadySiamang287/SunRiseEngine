@@ -66,7 +66,7 @@ namespace SUN {
         ~ResourceFactory();
 
         static DescriptorResources CreateDescriptorResources(std::span<vk::DescriptorSetLayoutBinding> bindings);
-        static vk::raii::PipelineLayout CreatePipelineLayout(DescriptorResources* resources = nullptr);
+        static vk::raii::PipelineLayout CreatePipelineLayout(vk::ShaderStageFlags flags, uint32_t pushConstantsSize, DescriptorResources* resources = nullptr);
         static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName);
 
         static vk::raii::Sampler CreateSampler(const SamplerConfig& config);

@@ -59,7 +59,7 @@ DeferredRenderer::DeferredRenderer() {
     mImageSampler = ResourceFactory::CreateSampler(gBufferSamplerConfig);
 
     mLightingDescriptors = ResourceFactory::CreateDescriptorResources(lightingBindings);
-    mLightingLayout = ResourceFactory::CreatePipelineLayout(&mLightingDescriptors);
+    mLightingLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mLightingDescriptors);
 
     std::array<vk::DescriptorSetLayoutBinding, 2> toneMappingBindings;
     toneMappingBindings[0] = {
@@ -77,13 +77,13 @@ DeferredRenderer::DeferredRenderer() {
     };
 
     mToneMappingDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
-    mToneMappingLayout = ResourceFactory::CreatePipelineLayout(&mToneMappingDescriptors);
+    mToneMappingLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mToneMappingDescriptors);
 
     mBloomHorizontalDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
     mBloomVerticalDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
-    mBloomLayout = ResourceFactory::CreatePipelineLayout(&mBloomHorizontalDescriptors);
+    mBloomLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(BloomPushConstants), &mBloomHorizontalDescriptors);
 
-    mPipelineLayout = ResourceFactory::CreatePipelineLayout();
+    mPipelineLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eVertex, sizeof(PushConstants));
 
     PipelineConfig gBuffer = {
         .vertexFile = "./shaders/vertMain.spv",

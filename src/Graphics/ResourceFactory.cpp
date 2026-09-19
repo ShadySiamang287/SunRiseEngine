@@ -43,16 +43,16 @@ DescriptorResources ResourceFactory::CreateDescriptorResources(std::span<vk::Des
     return std::move(temp);
 }
 
-vk::raii::PipelineLayout ResourceFactory::CreatePipelineLayout(DescriptorResources* resources){
+vk::raii::PipelineLayout ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlags flags, uint32_t pushConstantsSize, DescriptorResources* resources){
     if (!mInstancePtr) {
         Logger::Log(Logger::ERROR, "No reasource factory created!");
         return nullptr;
     }
 
     vk::PushConstantRange pushRange {
-        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+        .stageFlags = flags,
         .offset = 0,
-        .size = sizeof(PushConstants)
+        .size = pushConstantsSize
     };
 
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo {
