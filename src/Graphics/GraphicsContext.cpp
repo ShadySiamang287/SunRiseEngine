@@ -45,12 +45,13 @@ void GraphicsContext::Init(Window* window){
     CreateCommandBuffers();
     CreateSyncObjects();
     CreateGBuffers();
+    CreateHDRS();
     CreateDesciptorPool();
 }
 
 void GraphicsContext::Shutdown(){
     mDevice.waitIdle();
-    DestroyGBuffers();
+    CleanupSwapChain();
     vmaDestroyAllocator(mAllocator);
 }
 
@@ -331,9 +332,11 @@ void GraphicsContext::RecreateSwapChain() {
     CreateSwapchain();
     CreateImageViews();
     CreateGBuffers();
+    CreateHDRS();
 }
 
 void GraphicsContext::CleanupSwapChain() {
+    DestroyHDRS();
     DestroyGBuffers();
     mSwapChainImageViews.clear();
     mSwapChain = nullptr;
@@ -535,6 +538,62 @@ void GraphicsContext::DestroyGBuffers() {
     }
 }
 
+void GraphicsContext::CreateHDRS() {
+    const vk::ImageCreateInfo hdrInfo {
+        .sType = vk::StructureType::eImageCreateInfo,
+        .imageType = vk::ImageType::e2D,
+        .format = vk::Format::eR16G16B16A16Sfloat,
+        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
+    };
+
+    VmaAllocationCreateInfo allocInfo {
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
+    };
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        AllocatedImage& hdr = mHDRTargets[i];
+        VkImage tempHDR;
+        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&hdrInfo), &allocInfo, &tempHDR, &hdr.allocation, nullptr);
+        hdr.image = tempHDR;
+
+        TransitionImageLayoutImmediate(
+            hdr.image,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            {},                                            // no prior access to wait on
+            vk::AccessFlagBits2::eShaderRead,
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eFragmentShader
+        );
+
+        vk::ImageViewCreateInfo hdrView{
+            .image = hdr.image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = vk::Format::eR16G16B16A16Sfloat,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+        hdr.view = vk::raii::ImageView(mDevice, hdrView);
+    }
+}
+
+void GraphicsContext::DestroyHDRS() {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
+        AllocatedImage& image = mHDRTargets[i];
+        image.view = nullptr;
+        vmaDestroyImage(mAllocator, image.image, image.allocation);
+    }
+}
 void GraphicsContext::CreateDesciptorPool(){
     std::vector<vk::DescriptorPoolSize> poolSizes = {
         { vk::DescriptorType::eSampledImage, 64 },

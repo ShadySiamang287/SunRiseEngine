@@ -21,8 +21,12 @@ namespace SUN {
 
         static void BeginGBufferPass();
         static void EndGBufferPass();
+
         static void BeginLightingPass();
         static void EndLightingPass();
+
+        static void BeginToneMapping();
+        static void EndToneMapping();
 
         static void BindPipeline(vk::raii::Pipeline& pipeline);
         static void BindGeometryBuffer(const GeometryBuffer& buffer);
@@ -35,6 +39,8 @@ namespace SUN {
         static void SetDepthWriteEnable(bool state);
 
         static void WriteLightingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler);
+        static void WriteToneMappingDescriptorSets(const DescriptorResources& resorces, vk::raii::Sampler& sampler);
+
 
         static vk::Format GetSwapchainFormat();
 

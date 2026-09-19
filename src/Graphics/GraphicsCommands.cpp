@@ -308,9 +308,83 @@ void GraphicsCommands::BeginLightingPass() {
     vk::DebugUtilsLabelEXT label {
         .pLabelName = "Lighting pass",
     };
-    label.setColor({0.5F, 0.76F, .32F, 1.F});
+    label.setColor({0.76F, 0.32F, .32F, 1.F});
     cmd.beginDebugUtilsLabelEXT(label);
     
+    TransitionImageLayout(
+        mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].image,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eColorAttachmentOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    vk::RenderingAttachmentInfo hdrAttachment{
+        .imageView = mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue{
+            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        }
+    };
+
+    vk::RenderingInfo renderingInfo{
+        .renderArea = {
+            .offset = {0, 0},
+            .extent = mContextPtr->mSwapChainExtent
+        },
+        .layerCount = 1,          // Required when viewMask == 0
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &hdrAttachment,
+    };
+
+    cmd.beginRendering(renderingInfo);
+}
+
+void GraphicsCommands::EndLightingPass() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+
+    cmd.endRendering();
+
+    TransitionImageLayout(
+        mContextPtr->mHDRTargets[mContextPtr->mFrameIndex].image,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+
+        {}, // src access
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    cmd.endDebugUtilsLabelEXT();
+}
+
+void GraphicsCommands::BeginToneMapping() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
+
+    vk::DebugUtilsLabelEXT label {
+        .pLabelName = "Tone Mapping",
+    };
+    label.setColor({0.32F, 0.32F, .76F, 1.F});
+    cmd.beginDebugUtilsLabelEXT(label);
+
     TransitionImageLayout(
         mContextPtr->mSwapChainImages[mContextPtr->mImageIndex],
         vk::ImageLayout::eUndefined,
@@ -344,17 +418,18 @@ void GraphicsCommands::BeginLightingPass() {
     };
 
     cmd.beginRendering(renderingInfo);
+
 }
 
-void GraphicsCommands::EndLightingPass() {
+void GraphicsCommands::EndToneMapping() {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
 
     auto& cmd = mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex];
-
     cmd.endRendering();
+
     cmd.endDebugUtilsLabelEXT();
 }
 
@@ -366,6 +441,85 @@ void GraphicsCommands::BindPipeline(vk::raii::Pipeline& pipeline) {
     
 
     mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+}
+
+void GraphicsCommands::BindDescriptorSets(vk::raii::PipelineLayout& layout, const DescriptorResources& resources) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics,
+        *layout,
+        0,
+        *resources.sets[mContextPtr->mFrameIndex],
+        {}
+    );
+}
+
+void GraphicsCommands::PushConstants(vk::raii::PipelineLayout& layout, vk::ShaderStageFlags flags, const SUN::PushConstants& constants) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pushConstants(*layout, flags, 0, sizeof(SUN::PushConstants), &constants);
+}
+
+void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindVertexBuffers(0, buffer.GetHandle(), buffer.GetVertexOffset());
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), buffer.GetIndexType());
+}
+
+void GraphicsCommands::SetViewport(){
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setViewport(
+        0,
+        vk::Viewport(
+            0.f, 
+            static_cast<float>(mContextPtr->mSwapChainExtent.height),
+            static_cast<float>(mContextPtr->mSwapChainExtent.width), 
+            -static_cast<float>(mContextPtr->mSwapChainExtent.height),
+            0.f,
+            1.f
+        )
+    );
+}
+
+void GraphicsCommands::SetScissor() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setScissor(
+        0, vk::Rect2D(vk::Offset2D(0, 0), mContextPtr->mSwapChainExtent)
+    );
+}
+
+void GraphicsCommands::SetDepthTestEnable(bool state){
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setDepthTestEnable(state);
+}
+
+void GraphicsCommands::SetDepthWriteEnable(bool state){
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setDepthWriteEnable(state);
 }
 
 void GraphicsCommands::WriteLightingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler)  {
@@ -449,84 +603,50 @@ void GraphicsCommands::WriteLightingDescriptorSets(const DescriptorResources& re
     mContextPtr->mDevice.updateDescriptorSets(writes, {});
 }
 
-void GraphicsCommands::BindDescriptorSets(vk::raii::PipelineLayout& layout, const DescriptorResources& resources) {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindDescriptorSets(
-        vk::PipelineBindPoint::eGraphics,
-        *layout,
-        0,
-        *resources.sets[mContextPtr->mFrameIndex],
-        {}
-    );
-}
-
-void GraphicsCommands::PushConstants(vk::raii::PipelineLayout& layout, vk::ShaderStageFlags flags, const SUN::PushConstants& constants) {
+void GraphicsCommands::WriteToneMappingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler)  {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
 
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pushConstants(*layout, flags, 0, sizeof(SUN::PushConstants), &constants);
+    const auto& hdr = mContextPtr->mHDRTargets[mContextPtr->mFrameIndex];
+
+    vk::DescriptorImageInfo hdrInfo{
+        .sampler = nullptr,
+        .imageView = *hdr.view,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+    };
+
+    vk::DescriptorImageInfo samplerInfo{
+        .sampler = *sampler
+    };
+
+    std::array<vk::WriteDescriptorSet, 2> writes{
+        vk::WriteDescriptorSet{
+            .dstSet =
+                *resources.sets[mContextPtr->mFrameIndex],
+
+            .dstBinding = 0,
+            .descriptorCount = 1,
+
+            .descriptorType =
+                vk::DescriptorType::eSampledImage,
+
+            .pImageInfo = &hdrInfo
+        },
+
+        vk::WriteDescriptorSet{
+            .dstSet = *resources.sets[mContextPtr->mFrameIndex],
+            .dstBinding = 1,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eSampler,
+            .pImageInfo = &samplerInfo
+        }
+    };
+
+    mContextPtr->mDevice.updateDescriptorSets(writes, {});
 }
 
-void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
-
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindVertexBuffers(0, buffer.GetHandle(), buffer.GetVertexOffset());
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), buffer.GetIndexType());
-}
-
-void GraphicsCommands::SetViewport(){
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
-
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setViewport(
-        0,
-        vk::Viewport(
-            0.f, 
-            static_cast<float>(mContextPtr->mSwapChainExtent.height),
-            static_cast<float>(mContextPtr->mSwapChainExtent.width), 
-            -static_cast<float>(mContextPtr->mSwapChainExtent.height),
-            0.f,
-            1.f
-        )
-    );
-}
-
-void GraphicsCommands::SetScissor() {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
-
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setScissor(
-        0, vk::Rect2D(vk::Offset2D(0, 0), mContextPtr->mSwapChainExtent)
-    );
-}
-
-void GraphicsCommands::SetDepthTestEnable(bool state){
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setDepthTestEnable(state);
-}
-
-void GraphicsCommands::SetDepthWriteEnable(bool state){
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].setDepthWriteEnable(state);
-}
 
 vk::Format GraphicsCommands::GetSwapchainFormat() {
     return mContextPtr->mSwapChainSurfaceFormat.format;

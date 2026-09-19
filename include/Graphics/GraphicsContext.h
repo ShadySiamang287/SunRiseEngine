@@ -65,6 +65,9 @@ namespace SUN{
         void CreateGBuffers();
         void DestroyGBuffers();
 
+        void CreateHDRS();
+        void DestroyHDRS();
+
         void CreateDesciptorPool();
 
         void TransitionImageLayoutImmediate(
@@ -103,6 +106,7 @@ namespace SUN{
 
 
         std::array<GBuffer, MAX_FRAMES_IN_FLIGHT> mGBuffers;
+        std::array<AllocatedImage, MAX_FRAMES_IN_FLIGHT> mHDRTargets;
         vk::raii::DescriptorPool mDescriptorPool = nullptr;
         
         std::vector<vk::raii::Semaphore> mPresentCompleteSemaphores;

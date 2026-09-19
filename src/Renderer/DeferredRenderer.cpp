@@ -13,26 +13,26 @@
 using namespace SUN;
 
 DeferredRenderer::DeferredRenderer() {
-    std::array<vk::DescriptorSetLayoutBinding, 4> bindings;
-    bindings[0] = {
+    std::array<vk::DescriptorSetLayoutBinding, 4> lightingBindings;
+    lightingBindings[0] = {
         .binding = 0,
         .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
-    bindings[1] = {
+    lightingBindings[1] = {
         .binding = 1,
         .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
-    bindings[2] = {
+    lightingBindings[2] = {
         .binding = 2,
         .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
-    bindings[3] = {
+    lightingBindings[3] = {
         .binding = 3,
         .descriptorType = vk::DescriptorType::eSampler,
         .descriptorCount = 1,
@@ -56,18 +56,34 @@ DeferredRenderer::DeferredRenderer() {
         .compare = false
     };
 
-    mGBufferSampler =
-        ResourceFactory::CreateSampler(gBufferSamplerConfig);
+    mImageSampler = ResourceFactory::CreateSampler(gBufferSamplerConfig);
 
-    mLightingDescriptors = ResourceFactory::CreateDescriptorResources(bindings);
+    mLightingDescriptors = ResourceFactory::CreateDescriptorResources(lightingBindings);
     mLightingLayout = ResourceFactory::CreatePipelineLayout(&mLightingDescriptors);
+
+    std::array<vk::DescriptorSetLayoutBinding, 2> toneMappingBindings;
+    toneMappingBindings[0] = {
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eSampledImage,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+    toneMappingBindings[1] = {
+        .binding = 1,
+        .descriptorType = vk::DescriptorType::eSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+
+    mToneMappingDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
+    mToneMappingLayout = ResourceFactory::CreatePipelineLayout(&mToneMappingDescriptors);
 
     mPipelineLayout = ResourceFactory::CreatePipelineLayout();
 
     PipelineConfig gBuffer = {
-        .vertexFile = "./shaders/slang.spv",
+        .vertexFile = "./shaders/vertMain.spv",
         .vertexName = "vertMain",
-        .fragFile =  "./shaders/slang.spv",
+        .fragFile =  "./shaders/gBufferFrag.spv",
         .fragName = "gBufferFrag",
         .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
         .colorAttachmentFormats = {
@@ -84,10 +100,28 @@ DeferredRenderer::DeferredRenderer() {
     mGbufferPipeline = ResourceFactory::CreatePipeline(gBuffer, mPipelineLayout, "GBuffer pipeline");
 
     PipelineConfig lighting = {
-        .vertexFile = "./shaders/slang.spv",
+        .vertexFile = "./shaders/lightVert.spv",
         .vertexName = "lightVert",
-        .fragFile = "./shaders/slang.spv",
+        .fragFile = "./shaders/lightFrag.spv",
         .fragName = "lightFrag",
+
+        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
+
+        .colorAttachmentFormats = {
+            vk::Format::eR16G16B16A16Sfloat
+        },
+        .colorAttachmentLocations = {
+            0
+        },
+        .useVertexInput = false
+    };
+    mLightingPipeline = ResourceFactory::CreatePipeline(lighting, mLightingLayout, "Lighting Pipeline");
+
+    PipelineConfig tonemapping = {
+        .vertexFile = "./shaders/lightVert.spv",
+        .vertexName = "lightVert",
+        .fragFile = "./shaders/toneMappingFrag.spv",
+        .fragName = "toneMappingFrag",
 
         .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
 
@@ -99,7 +133,7 @@ DeferredRenderer::DeferredRenderer() {
         },
         .useVertexInput = false
     };
-    mLightingPipeline = ResourceFactory::CreatePipeline(lighting, mLightingLayout, "Lighting Pipeline");
+    mToneMappingPipeline = ResourceFactory::CreatePipeline(tonemapping, mToneMappingLayout, "Tone mapping Pipeline");
 
     mFrameDataBuffer.Init(sizeof(FrameData));
     mObjectDataBuffer.Init(sizeof(ObjectData) * MAX_OBJECTS, true);
@@ -139,7 +173,8 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     }
 
     GraphicsCommands::BeginDraw();
-    GraphicsCommands::WriteLightingDescriptorSets(mLightingDescriptors, mGBufferSampler);
+    GraphicsCommands::WriteLightingDescriptorSets(mLightingDescriptors, mImageSampler);
+    GraphicsCommands::WriteToneMappingDescriptorSets(mToneMappingDescriptors, mImageSampler);
     GraphicsCommands::BeginGBufferPass();
 
     GraphicsCommands::SetViewport();
@@ -173,6 +208,17 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     );
 
     GraphicsCommands::EndLightingPass();
+
+    GraphicsCommands::BeginToneMapping();
+    GraphicsCommands::BindPipeline(mToneMappingPipeline);
+    GraphicsCommands::BindDescriptorSets(mToneMappingLayout, mToneMappingDescriptors);
+        GraphicsCommands::Draw(
+        3,  // fullscreen triangle
+        1,
+        0,
+        0
+    );
+    GraphicsCommands::EndToneMapping();
     
     GraphicsCommands::EndDraw();
 }
