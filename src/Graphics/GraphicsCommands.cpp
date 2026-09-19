@@ -350,7 +350,7 @@ void GraphicsCommands::BeginLightingPass() {
             {}, // src access
             vk::AccessFlagBits2::eColorAttachmentWrite,
 
-            vk::PipelineStageFlagBits2::eTopOfPipe,
+            vk::PipelineStageFlagBits2::eNone,
             vk::PipelineStageFlagBits2::eColorAttachmentOutput
         ),
         MakeImageBarrier(
@@ -422,22 +422,22 @@ void GraphicsCommands::EndLightingPass() {
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal,
 
-            {}, // src access
             vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
 
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits2::eFragmentShader
         ),
         MakeImageBarrier(
             mContextPtr->mBloomTargets[mContextPtr->mFrameIndex].brightness.image,
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal,
 
-            {}, // src access
             vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
 
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits2::eFragmentShader
         )
     };
     ImageBarriers(barriers);
@@ -945,38 +945,24 @@ void GraphicsCommands::TransitionImageLayout(
     vk::PipelineStageFlags2 dst_stage_mask,
     vk::ImageAspectFlags aspectMask
 ) {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
+    auto barrier = MakeImageBarrier(
+        image,
+        old_layout,
+        new_layout,
+        src_access_mask,
+        dst_access_mask,
+        src_stage_mask,
+        dst_stage_mask,
+        aspectMask
+    );
 
-    vk::ImageMemoryBarrier2 barrier = {
-        .srcStageMask = src_stage_mask,
-        .srcAccessMask = src_access_mask,
-        .dstStageMask        = dst_stage_mask,
-        .dstAccessMask       = dst_access_mask,
-        .oldLayout           = old_layout,
-        .newLayout           = new_layout,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image               = image,
-        .subresourceRange    = {
-            .aspectMask     = aspectMask,
-            .baseMipLevel   = 0,
-            .levelCount     = 1,
-            .baseArrayLayer = 0,
-            .layerCount     = 1
+    ImageBarriers(
+        std::span<const vk::ImageMemoryBarrier2>{
+            &barrier, 1
         }
-    };
-
-    vk::DependencyInfo dependency_info = {
-        .dependencyFlags         = {},
-        .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers    = &barrier
-    };
-
-    mContextPtr->mCommandBuffers[mContextPtr->mFrameIndex].pipelineBarrier2(dependency_info);
+    );
 }
+
 
 vk::ImageMemoryBarrier2 GraphicsCommands::MakeImageBarrier(
                 vk::Image image,

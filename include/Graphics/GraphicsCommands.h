@@ -1,5 +1,6 @@
 #pragma once
 #include <vulkan/vulkan_raii.hpp>
+#include <span>
 
 #include "Graphics/Buffers.h"
 #include "Graphics/vertex.h"
