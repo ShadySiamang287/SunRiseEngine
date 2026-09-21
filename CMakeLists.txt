@@ -81,6 +81,9 @@ target_sources(SunriseEngine
 
     src/Renderer/Renderer3D.cpp
     src/Renderer/DeferredRenderer.cpp
+    src/Renderer/PostProcessor/PostProcessor.cpp
+    src/Renderer/PostProcessor/BloomPass.cpp
+    src/Renderer/PostProcessor/ToneMappingPass.cpp
 )
 
 target_include_directories(SunriseEngine PUBLIC ${PROJECT_SOURCE_DIR}/include)

@@ -1,8 +1,36 @@
 #include "Renderer/Renderer3D.h"
+#include "Graphics/ResourceFactory.h"
+#include "Graphics/GraphicsCommands.h"
 
 #include <iostream>
 
 using namespace SUN;
+
+Renderer3D::Renderer3D() {
+    SamplerConfig gBufferSamplerConfig{
+        .minFilter = vk::Filter::eNearest,
+        .magFilter = vk::Filter::eNearest,
+
+        .mipmapMode = vk::SamplerMipmapMode::eNearest,
+
+        .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+
+        .minLod = 0.0f,
+        .maxLod = 0.0f,
+
+        .anisotropy = false,
+        .compare = false
+    };
+
+    mSampler = ResourceFactory::CreateSampler(gBufferSamplerConfig);
+
+
+    mDeferredRenderer = std::make_unique<DeferredRenderer>(mSampler);
+    mBloomPass = std::make_unique<BloomPass>(mDeferredRenderer->GetBrightnessImages(), mSampler);
+    mToneMappingPass = std::make_unique<ToneMappingPass>(mBloomPass->GetOutput(0), mDeferredRenderer->GetHDRImages(), mSampler);
+}
 
 void Renderer3D::BeginScene(const Camera& camera) {
     mRenderQueue.Clear();
@@ -20,7 +48,14 @@ void Renderer3D::SubmitMesh(const Mesh& Mesh, const glm::mat4& Transform) {
 }
 
 void Renderer3D::EndScene(RenderContext& context) {
-    mDeferredRenderer.Render(context, mRenderQueue, mCamera, mDirectionalLights, mPointLights);
+    PostProcessContext postProcessContext {
+        .frameIndex = context.frameIndex
+    };
+    GraphicsCommands::BeginDraw();
+    mDeferredRenderer->Render(context, mRenderQueue, mCamera, mDirectionalLights, mPointLights);
+    mBloomPass->Execute(postProcessContext);
+    mToneMappingPass->Execute(postProcessContext);
+    GraphicsCommands::EndDraw();
     mCamera = nullptr;
 }
 

@@ -8,6 +8,8 @@
 
 #include "Graphics/vertex.h"
 
+#include "Renderer/PostProcessor/PostProcessorPass.h"
+
 namespace SUN {
     struct PipelineConfig {
         std::filesystem::path vertexFile;
@@ -70,6 +72,8 @@ namespace SUN {
         static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName);
 
         static vk::raii::Sampler CreateSampler(const SamplerConfig& config);
+
+        static RenderImage CreateRenderImage(vk::Format format, vk::Extent2D extent, vk::ImageLayout layout, vk::ImageUsageFlags usageFlags, vk::ImageAspectFlags aspectFlags);
 
     private:
         GraphicsContext* mGraphicsContextPtr;

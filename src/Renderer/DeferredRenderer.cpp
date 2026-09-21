@@ -12,7 +12,7 @@
 
 using namespace SUN;
 
-DeferredRenderer::DeferredRenderer() {
+DeferredRenderer::DeferredRenderer(vk::raii::Sampler& sampler) : mImageSampler(sampler) {
     std::array<vk::DescriptorSetLayoutBinding, 4> lightingBindings;
     lightingBindings[0] = {
         .binding = 0,
@@ -39,71 +39,9 @@ DeferredRenderer::DeferredRenderer() {
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
-    SamplerConfig gBufferSamplerConfig{
-        .minFilter = vk::Filter::eNearest,
-        .magFilter = vk::Filter::eNearest,
-
-        .mipmapMode = vk::SamplerMipmapMode::eNearest,
-
-        .addressModeU = vk::SamplerAddressMode::eClampToEdge,
-        .addressModeV = vk::SamplerAddressMode::eClampToEdge,
-        .addressModeW = vk::SamplerAddressMode::eClampToEdge,
-
-        .minLod = 0.0f,
-        .maxLod = 0.0f,
-
-        .anisotropy = false,
-        .compare = false
-    };
-
-    mImageSampler = ResourceFactory::CreateSampler(gBufferSamplerConfig);
-
     mLightingDescriptors = ResourceFactory::CreateDescriptorResources(lightingBindings);
     mLightingLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mLightingDescriptors);
 
-    std::array<vk::DescriptorSetLayoutBinding, 3> toneMappingBindings;
-    toneMappingBindings[0] = {
-        .binding = 0,
-        .descriptorType = vk::DescriptorType::eSampledImage,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eFragment
-    };
-    
-    toneMappingBindings[1] = {
-        .binding = 1,
-        .descriptorType = vk::DescriptorType::eSampledImage,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eFragment
-    };
-
-    toneMappingBindings[2] = {
-        .binding = 2,
-        .descriptorType = vk::DescriptorType::eSampler,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eFragment
-    };
-
-    std::array<vk::DescriptorSetLayoutBinding, 2> bloomMappingBindings;
-    bloomMappingBindings[0] = {
-        .binding = 0,
-        .descriptorType = vk::DescriptorType::eSampledImage,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eFragment
-    };
-    
-    bloomMappingBindings[1] = {
-        .binding = 1,
-        .descriptorType = vk::DescriptorType::eSampler,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eFragment
-    };
-
-    mToneMappingDescriptors = ResourceFactory::CreateDescriptorResources(toneMappingBindings);
-    mToneMappingLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mToneMappingDescriptors);
-
-    mBloomHorizontalDescriptors = ResourceFactory::CreateDescriptorResources(bloomMappingBindings);
-    mBloomVerticalDescriptors = ResourceFactory::CreateDescriptorResources(bloomMappingBindings);
-    mBloomLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(BloomPushConstants), &mBloomHorizontalDescriptors);
 
     mPipelineLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eVertex, sizeof(PushConstants));
 
@@ -146,51 +84,26 @@ DeferredRenderer::DeferredRenderer() {
     };
     mLightingPipeline = ResourceFactory::CreatePipeline(lighting, mLightingLayout, "Lighting Pipeline");
 
-    PipelineConfig tonemapping = {
-        .vertexFile = "./shaders/lightVert.spv",
-        .vertexName = "lightVert",
-        .fragFile = "./shaders/toneMappingFrag.spv",
-        .fragName = "toneMappingFrag",
-
-        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
-
-        .colorAttachmentFormats = {
-            GraphicsCommands::GetSwapchainFormat()
-        },
-        .colorAttachmentLocations = {
-            0
-        },
-        .useVertexInput = false
-    };
-    mToneMappingPipeline = ResourceFactory::CreatePipeline(tonemapping, mToneMappingLayout, "Tone mapping Pipeline");
-
-    PipelineConfig bloomConfig {
-        .vertexFile = "./shaders/lightVert.spv",
-        .vertexName = "lightVert",
-        .fragFile = "./shaders/bloom.spv",
-        .fragName = "bloom",
-
-        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
-
-        .colorAttachmentFormats = {
-            vk::Format::eR16G16B16A16Sfloat
-        },
-        .colorAttachmentLocations = {
-            0
-        },
-        .useVertexInput = false
-    };
-    mBloomPipeline = ResourceFactory::CreatePipeline(bloomConfig, mBloomLayout, "Bloom Pipeline");
-
     mFrameDataBuffer.Init(sizeof(FrameData));
     mObjectDataBuffer.Init(sizeof(ObjectData) * MAX_OBJECTS, true);
     mDirectionalLightDataBuffer.Init(sizeof(GPUDirectionalLight) * MAX_DIRECTIONAL_LIGHTS, true);
     mPointLightDataBuffer.Init(sizeof(GPUPointLight) * MAX_POINT_LIGHTS, true);
 
-
     mSortOrder.reserve(MAX_OBJECTS);
     mObjects.reserve(MAX_OBJECTS);
     mBatches.reserve(256);
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
+        mHDRImages[i] = ResourceFactory::CreateRenderImage(vk::Format::eR16G16B16A16Sfloat, GraphicsCommands::GetSwapchainExtent(), vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::ImageAspectFlagBits::eColor);
+        mBrightnessImages[i] = ResourceFactory::CreateRenderImage(vk::Format::eR16G16B16A16Sfloat, GraphicsCommands::GetSwapchainExtent(), vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::ImageAspectFlagBits::eColor);
+    }
+}
+
+DeferredRenderer::~DeferredRenderer() {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        GraphicsCommands::DestroyRenderImage(mHDRImages[i]);
+        GraphicsCommands::DestroyRenderImage(mBrightnessImages[i]);
+    }
 }
 
 void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* cam,
@@ -219,9 +132,8 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
         mObjectDataBuffer.Upload(mObjects.data(), mObjects.size() * sizeof(ObjectData));
     }
 
-    GraphicsCommands::BeginDraw();
+    //GraphicsCommands::BeginDraw();
     GraphicsCommands::WriteLightingDescriptorSets(mLightingDescriptors, mImageSampler);
-    GraphicsCommands::WriteToneMappingDescriptorSets(mToneMappingDescriptors, mImageSampler);
     GraphicsCommands::BeginGBufferPass();
 
     GraphicsCommands::SetViewport();
@@ -240,7 +152,71 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     }
 
     GraphicsCommands::EndGBufferPass();
-    GraphicsCommands::BeginLightingPass();
+
+    GraphicsCommands::BeginLabel("Lighting pass", {0.76F, 0.32F, .32F, 1.F});
+    std::array<vk::ImageMemoryBarrier2, 2> barriers {
+        GraphicsCommands::MakeImageBarrier(
+            mBrightnessImages[context.frameIndex].image.image,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
+
+            {}, // src access
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+
+            vk::PipelineStageFlagBits2::eNone,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        ),
+        GraphicsCommands::MakeImageBarrier(
+            mBrightnessImages[context.frameIndex].image.image,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eColorAttachmentOptimal,
+
+            {}, // src access
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+
+            vk::PipelineStageFlagBits2::eNone,
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput
+        )
+    };
+
+    GraphicsCommands::ImageBarriers(barriers);
+
+    vk::RenderingAttachmentInfo brightAttachment {
+        .imageView = mBrightnessImages[context.frameIndex].image.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue{
+            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        }
+    };
+
+    vk::RenderingAttachmentInfo hdrAttachment{
+        .imageView = mHDRImages[context.frameIndex].image.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue{
+            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        }
+    };
+
+    std::array<vk::RenderingAttachmentInfo, 2> attachments {
+        hdrAttachment,
+        brightAttachment
+    };
+
+    vk::RenderingInfo renderingInfo{
+        .renderArea = {
+            .offset = {0, 0},
+            .extent = GraphicsCommands::GetSwapchainExtent()
+        },
+        .layerCount = 1,          // Required when viewMask == 0
+        .colorAttachmentCount = 2,
+        .pColorAttachments = attachments.data(),
+    };
+    GraphicsCommands::BeginRendering(renderingInfo);
+
     GraphicsCommands::PushConstants(mLightingLayout, vk::ShaderStageFlagBits::eFragment,  pConstants);
 
     GraphicsCommands::SetDepthTestEnable(false);
@@ -255,44 +231,66 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
         0
     );
 
-    GraphicsCommands::EndLightingPass();
-    GraphicsCommands::WriteBloomDescriptorSets(mBloomHorizontalDescriptors, mImageSampler, true);
-    GraphicsCommands::WriteBloomDescriptorSets(mBloomVerticalDescriptors, mImageSampler, false);
-    GraphicsCommands::BeginBloom();
-    GraphicsCommands::BindPipeline(mBloomPipeline);
-    GraphicsCommands::PushBloomConstants(mBloomLayout, true);
-    GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomHorizontalDescriptors);
-    GraphicsCommands::Draw(
-        3,  // fullscreen triangle
-        1,
-        0,
-        0
-    );
-    GraphicsCommands::TransitionBloomDirection();
-    GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomVerticalDescriptors);
-    GraphicsCommands::PushBloomConstants(mBloomLayout, false);
-    GraphicsCommands::Draw(
-        3,  // fullscreen triangle
-        1,
-        0,
-        0
-    );
-    GraphicsCommands::EndBloom();
+    GraphicsCommands::EndRendering();
+    std::array<vk::ImageMemoryBarrier2, 1> postBarriers {
+        GraphicsCommands::MakeImageBarrier(
+            mBrightnessImages[context.frameIndex].image.image,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
 
-    GraphicsCommands::BeginToneMapping();
-    //GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  pConstants);
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::AccessFlagBits2::eShaderRead,
 
-    GraphicsCommands::BindPipeline(mToneMappingPipeline);
-    GraphicsCommands::BindDescriptorSets(mToneMappingLayout, mToneMappingDescriptors);
-    GraphicsCommands::Draw(
-        3,  // fullscreen triangle
-        1,
-        0,
-        0
-    );
-    GraphicsCommands::EndToneMapping();
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits2::eFragmentShader
+        )
+    };
+    GraphicsCommands::ImageBarriers(postBarriers);
+    GraphicsCommands::EndLabel();
+    // GraphicsCommands::WriteBloomDescriptorSets(mBloomHorizontalDescriptors, mImageSampler, true);
+    // GraphicsCommands::WriteBloomDescriptorSets(mBloomVerticalDescriptors, mImageSampler, false);
+    // GraphicsCommands::BeginBloom();
+    // GraphicsCommands::BindPipeline(mBloomPipeline);
+    // GraphicsCommands::PushBloomConstants(mBloomLayout, true);
+    // GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomHorizontalDescriptors);
+    // GraphicsCommands::Draw(
+    //     3,  // fullscreen triangle
+    //     1,
+    //     0,
+    //     0
+    // );
+    // GraphicsCommands::TransitionBloomDirection();
+    // GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomVerticalDescriptors);
+    // GraphicsCommands::PushBloomConstants(mBloomLayout, false);
+    // GraphicsCommands::Draw(
+    //     3,  // fullscreen triangle
+    //     1,
+    //     0,
+    //     0
+    // );
+    // GraphicsCommands::EndBloom();
+    //
+    // GraphicsCommands::BeginToneMapping();
+    // //GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  pConstants);
+    //
+    // GraphicsCommands::BindPipeline(mToneMappingPipeline);
+    // GraphicsCommands::BindDescriptorSets(mToneMappingLayout, mToneMappingDescriptors);
+    // GraphicsCommands::Draw(
+    //     3,  // fullscreen triangle
+    //     1,
+    //     0,
+    //     0
+    // );
+    //GraphicsCommands::EndToneMapping();
     
-    GraphicsCommands::EndDraw();
+    //GraphicsCommands::EndDraw();
+}
+
+std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& DeferredRenderer::GetBrightnessImages() {
+    return mBrightnessImages;
+}
+std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& DeferredRenderer::GetHDRImages() {
+    return mHDRImages;
 }
 
 void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {

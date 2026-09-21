@@ -43,6 +43,7 @@ namespace SUN {
 
     struct RenderContext {
         Renderer3D* renderer;
+        uint32_t frameIndex;
     };
 
     struct FrameData {

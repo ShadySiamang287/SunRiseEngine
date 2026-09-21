@@ -143,6 +143,15 @@ void GraphicsCommands::Draw(int vertexCount, int instanceCount, int firstVertex,
     cmd.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
+void GraphicsCommands::DrawFullScreenTriangle() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.draw(3, 1, 0, 0);
+}
+
 void GraphicsCommands::EndDraw(){
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
@@ -413,83 +422,83 @@ void GraphicsCommands::BeginLightingPass() {
     cmd.beginRendering(renderingInfo);
 }
 
-void GraphicsCommands::EndLightingPass() {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
+// void GraphicsCommands::EndLightingPass() {
+//     if (!mContextPtr){
+//         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+//         return;
+//     }
 
-    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
-    auto& cmd = frame.commandBuffer;
+//     auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+//     auto& cmd = frame.commandBuffer;
 
-    cmd.endRendering();
+//     cmd.endRendering();
 
-    std::array<vk::ImageMemoryBarrier2, 1> barriers {
-        MakeImageBarrier(
-            frame.bloomTargets.brightness.image,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
+//     std::array<vk::ImageMemoryBarrier2, 1> barriers {
+//         MakeImageBarrier(
+//             frame.bloomTargets.brightness.image,
+//             vk::ImageLayout::eColorAttachmentOptimal,
+//             vk::ImageLayout::eShaderReadOnlyOptimal,
 
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::AccessFlagBits2::eShaderRead,
+//             vk::AccessFlagBits2::eColorAttachmentWrite,
+//             vk::AccessFlagBits2::eShaderRead,
 
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        )
-    };
-    ImageBarriers(barriers);
+//             vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+//             vk::PipelineStageFlagBits2::eFragmentShader
+//         )
+//     };
+//     ImageBarriers(barriers);
 
-    cmd.endDebugUtilsLabelEXT();
-}
+//     cmd.endDebugUtilsLabelEXT();
+// }
 
-void GraphicsCommands::BeginBloom() {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
+// void GraphicsCommands::BeginBloom() {
+//     if (!mContextPtr){
+//         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+//         return;
+//     }
 
-    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
-    auto& cmd = frame.commandBuffer;
+//     auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+//     auto& cmd = frame.commandBuffer;
     
-    vk::DebugUtilsLabelEXT label {
-        .pLabelName = "Bloom Pass",
-    };
-    label.setColor({0.32F, 0.76F, .76F, 1.F});
-    cmd.beginDebugUtilsLabelEXT(label);
+//     vk::DebugUtilsLabelEXT label {
+//         .pLabelName = "Bloom Pass",
+//     };
+//     label.setColor({0.32F, 0.76F, .76F, 1.F});
+//     cmd.beginDebugUtilsLabelEXT(label);
 
-    TransitionImageLayout(
-        frame.bloomTargets.ping.image,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
-        vk::ImageLayout::eColorAttachmentOptimal,
+//     TransitionImageLayout(
+//         frame.bloomTargets.ping.image,
+//         vk::ImageLayout::eShaderReadOnlyOptimal,
+//         vk::ImageLayout::eColorAttachmentOptimal,
 
-        vk::AccessFlagBits2::eShaderRead,
-        vk::AccessFlagBits2::eColorAttachmentWrite,
+//         vk::AccessFlagBits2::eShaderRead,
+//         vk::AccessFlagBits2::eColorAttachmentWrite,
 
-        vk::PipelineStageFlagBits2::eFragmentShader,
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput
-    );
+//         vk::PipelineStageFlagBits2::eFragmentShader,
+//         vk::PipelineStageFlagBits2::eColorAttachmentOutput
+//     );
 
-    vk::RenderingAttachmentInfo attachment{
-        .imageView = frame.bloomTargets.ping.view,
-        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .loadOp = vk::AttachmentLoadOp::eClear,
-        .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue{
-            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
-        }
-    };
+//     vk::RenderingAttachmentInfo attachment{
+//         .imageView = frame.bloomTargets.ping.view,
+//         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+//         .loadOp = vk::AttachmentLoadOp::eClear,
+//         .storeOp = vk::AttachmentStoreOp::eStore,
+//         .clearValue = vk::ClearValue{
+//             vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+//         }
+//     };
 
-    vk::RenderingInfo renderingInfo{
-        .renderArea = {
-            .offset = {0, 0},
-            .extent = mContextPtr->mSwapChainExtent
-        },
-        .layerCount = 1,          // Required when viewMask == 0
-        .colorAttachmentCount = 1,
-        .pColorAttachments = &attachment,
-    };
-    cmd.beginRendering(renderingInfo);
-}
+//     vk::RenderingInfo renderingInfo{
+//         .renderArea = {
+//             .offset = {0, 0},
+//             .extent = mContextPtr->mSwapChainExtent
+//         },
+//         .layerCount = 1,          // Required when viewMask == 0
+//         .colorAttachmentCount = 1,
+//         .pColorAttachments = &attachment,
+//     };
+//     cmd.beginRendering(renderingInfo);
+// }
 
 void GraphicsCommands::PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal){
     auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
@@ -500,93 +509,93 @@ void GraphicsCommands::PushBloomConstants(vk::raii::PipelineLayout& layout, bool
 
 }
 
-void GraphicsCommands::TransitionBloomDirection(){
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
+// void GraphicsCommands::TransitionBloomDirection(){
+//     if (!mContextPtr){
+//         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+//         return;
+//     }
     
-    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
-    auto& cmd = frame.commandBuffer;
-    cmd.endRendering();
+//     auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+//     auto& cmd = frame.commandBuffer;
+//     cmd.endRendering();
 
 
-    std::array<vk::ImageMemoryBarrier2, 2> barriers {
-        MakeImageBarrier(
-            frame.bloomTargets.ping.image,
+//     std::array<vk::ImageMemoryBarrier2, 2> barriers {
+//         MakeImageBarrier(
+//             frame.bloomTargets.ping.image,
 
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
+//             vk::ImageLayout::eColorAttachmentOptimal,
+//             vk::ImageLayout::eShaderReadOnlyOptimal,
 
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::AccessFlagBits2::eShaderRead,
+//             vk::AccessFlagBits2::eColorAttachmentWrite,
+//             vk::AccessFlagBits2::eShaderRead,
 
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        ),
-        MakeImageBarrier(
-            frame.bloomTargets.pong.image,
+//             vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+//             vk::PipelineStageFlagBits2::eFragmentShader
+//         ),
+//         MakeImageBarrier(
+//             frame.bloomTargets.pong.image,
 
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageLayout::eColorAttachmentOptimal,
+//             vk::ImageLayout::eShaderReadOnlyOptimal,
+//             vk::ImageLayout::eColorAttachmentOptimal,
 
-            vk::AccessFlagBits2::eShaderRead,
-            vk::AccessFlagBits2::eColorAttachmentWrite,
+//             vk::AccessFlagBits2::eShaderRead,
+//             vk::AccessFlagBits2::eColorAttachmentWrite,
 
-            vk::PipelineStageFlagBits2::eFragmentShader,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput
-        )
-    };
-    ImageBarriers(barriers);
+//             vk::PipelineStageFlagBits2::eFragmentShader,
+//             vk::PipelineStageFlagBits2::eColorAttachmentOutput
+//         )
+//     };
+//     ImageBarriers(barriers);
 
     
-    vk::RenderingAttachmentInfo attachment{
-        .imageView = frame.bloomTargets.pong.view,
-        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .loadOp = vk::AttachmentLoadOp::eClear,
-        .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue{
-            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
-        }
-    };
+//     vk::RenderingAttachmentInfo attachment{
+//         .imageView = frame.bloomTargets.pong.view,
+//         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+//         .loadOp = vk::AttachmentLoadOp::eClear,
+//         .storeOp = vk::AttachmentStoreOp::eStore,
+//         .clearValue = vk::ClearValue{
+//             vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+//         }
+//     };
 
-    vk::RenderingInfo renderingInfo{
-        .renderArea = {
-            .offset = {0, 0},
-            .extent = mContextPtr->mSwapChainExtent
-        },
-        .layerCount = 1,          // Required when viewMask == 0
-        .colorAttachmentCount = 1,
-        .pColorAttachments = &attachment,
-    };
-    cmd.beginRendering(renderingInfo);
-}
+//     vk::RenderingInfo renderingInfo{
+//         .renderArea = {
+//             .offset = {0, 0},
+//             .extent = mContextPtr->mSwapChainExtent
+//         },
+//         .layerCount = 1,          // Required when viewMask == 0
+//         .colorAttachmentCount = 1,
+//         .pColorAttachments = &attachment,
+//     };
+//     cmd.beginRendering(renderingInfo);
+//}
 
-void GraphicsCommands::EndBloom() {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
+// void GraphicsCommands::EndBloom() {
+//     if (!mContextPtr){
+//         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+//         return;
+//     }
     
-    auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
-    auto& cmd = frame.commandBuffer;
-    cmd.endRendering();
+//     auto& frame = mContextPtr->mFrames[mContextPtr->mFrameIndex];
+//     auto& cmd = frame.commandBuffer;
+//     cmd.endRendering();
 
-    TransitionImageLayout(
-        frame.bloomTargets.pong.image,
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+//     TransitionImageLayout(
+//         frame.bloomTargets.pong.image,
+//         vk::ImageLayout::eColorAttachmentOptimal,
+//         vk::ImageLayout::eShaderReadOnlyOptimal,
 
-        vk::AccessFlagBits2::eColorAttachmentWrite,
-        vk::AccessFlagBits2::eShaderRead,
+//         vk::AccessFlagBits2::eColorAttachmentWrite,
+//         vk::AccessFlagBits2::eShaderRead,
 
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits2::eFragmentShader
-    );
+//         vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+//         vk::PipelineStageFlagBits2::eFragmentShader
+//     );
 
 
-    cmd.endDebugUtilsLabelEXT();
-}
+//     cmd.endDebugUtilsLabelEXT();
+// }
 
 void GraphicsCommands::BeginToneMapping() {
     if (!mContextPtr){
@@ -662,6 +671,51 @@ void GraphicsCommands::EndToneMapping() {
     auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
     cmd.endRendering();
 
+    cmd.endDebugUtilsLabelEXT();
+}
+
+
+void GraphicsCommands::BeginRendering(vk::RenderingInfo& info) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.beginRendering(info);
+}
+
+void GraphicsCommands::EndRendering() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.endRendering();
+}
+
+void GraphicsCommands::BeginLabel(std::string labelName, std::array<float, 4> colours) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    vk::DebugUtilsLabelEXT label {
+        .pLabelName = labelName.c_str(),
+        .color = colours
+    };
+    
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    cmd.beginDebugUtilsLabelEXT(label);
+}
+void GraphicsCommands::EndLabel() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    
+    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
     cmd.endDebugUtilsLabelEXT();
 }
 
@@ -899,6 +953,15 @@ void GraphicsCommands::WriteToneMappingDescriptorSets(const DescriptorResources&
     mContextPtr->mDevice.updateDescriptorSets(writes, {});
 }
 
+void GraphicsCommands::WriteDescriptors(const std::span<vk::WriteDescriptorSet> writes) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+    
+    mContextPtr->mDevice.updateDescriptorSets(writes, {});
+}
+
 void GraphicsCommands::WriteBloomDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler, bool horizontal)  {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
@@ -949,7 +1012,49 @@ void GraphicsCommands::WriteBloomDescriptorSets(const DescriptorResources& resou
 
 
 vk::Format GraphicsCommands::GetSwapchainFormat() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return vk::Format::eUndefined;
+    }
+
     return mContextPtr->mSwapChainSurfaceFormat.format;
+}
+
+vk::Extent2D GraphicsCommands::GetSwapchainExtent(){
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return vk::Extent2D{};
+    }
+
+    return mContextPtr->mSwapChainExtent;
+}
+
+vk::Image& GraphicsCommands::GetCurrentSwapchainImage() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+    }
+
+    return mContextPtr->mSwapChainImages[mContextPtr->mFrameIndex];
+}
+
+vk::raii::ImageView& GraphicsCommands::GetCurrentSwapchainImageView() {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+    }
+
+    return mContextPtr->mSwapChainImageViews[mContextPtr->mFrameIndex];
+}
+
+
+void GraphicsCommands::DestroyRenderImage(RenderImage& image) {
+    if (!mContextPtr){
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+        return;
+    }
+
+    AllocatedImage& allocatedImage = image.image;
+    allocatedImage.view = nullptr;
+    vmaDestroyImage(mContextPtr->mAllocator, allocatedImage.image, allocatedImage.allocation);
 }
 
 void GraphicsCommands::TransitionImageLayout(	    

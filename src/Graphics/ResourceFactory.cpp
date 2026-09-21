@@ -242,5 +242,55 @@ vk::raii::Sampler ResourceFactory::CreateSampler(const SamplerConfig& config) {
     );
 }
 
+RenderImage ResourceFactory::CreateRenderImage(vk::Format format, vk::Extent2D extent, vk::ImageLayout layout, vk::ImageUsageFlags usageFlags, vk::ImageAspectFlags aspectFlags){
+    RenderImage tempRenderImage;
+    tempRenderImage.format = format;
+    tempRenderImage.extent = extent;
+    tempRenderImage.layout = layout;
+
+    const vk::ImageCreateInfo createInfo {
+        .sType = vk::StructureType::eImageCreateInfo,
+        .imageType = vk::ImageType::e2D,
+        .format = format,
+        .extent = {extent.width, extent.height, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = usageFlags
+    };
+
+    VmaAllocationCreateInfo allocInfo {
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
+    };
+
+    VkImage tempImage;
+    vmaCreateImage(mInstancePtr->mGraphicsContextPtr->mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&createInfo), &allocInfo, &tempImage, &tempRenderImage.image.allocation, nullptr);
+    tempRenderImage.image.image = tempImage;
+
+    mInstancePtr->mGraphicsContextPtr->TransitionImageLayoutImmediate(
+        tempRenderImage.image.image,
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        {},
+        vk::AccessFlagBits2::eShaderRead,
+        vk::PipelineStageFlagBits2::eTopOfPipe,
+        vk::PipelineStageFlagBits2::eFragmentShader
+    );
+    vk::ImageViewCreateInfo imageView {
+        .image = tempRenderImage.image.image,
+        .viewType = vk::ImageViewType::e2D,
+        .format = format,
+        .subresourceRange = {
+            .aspectMask = aspectFlags,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    };
+    tempRenderImage.image.view = vk::raii::ImageView(mInstancePtr->mGraphicsContextPtr->mDevice, imageView);
+    return std::move(tempRenderImage);
+}
 
 ResourceFactory* ResourceFactory::mInstancePtr = nullptr;

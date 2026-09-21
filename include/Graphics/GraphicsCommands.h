@@ -4,6 +4,7 @@
 
 #include "Graphics/Buffers.h"
 #include "Graphics/vertex.h"
+#include "Renderer/PostProcessor/PostProcessorPass.h"
 
 namespace SUN {
     class GraphicsContext;
@@ -18,6 +19,7 @@ namespace SUN {
         static void BeginDraw();
         static void DrawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance);
         static void Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
+        static void DrawFullScreenTriangle();
         static void EndDraw();
 
         static void BeginGBufferPass();
@@ -26,13 +28,19 @@ namespace SUN {
         static void BeginLightingPass();
         static void EndLightingPass();
 
-        static void BeginBloom();
+        // static void BeginBloom();
         static void PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal);
-        static void TransitionBloomDirection();
-        static void EndBloom();
+        // static void TransitionBloomDirection();
+        // static void EndBloom();
 
         static void BeginToneMapping();
         static void EndToneMapping();
+
+        static void BeginRendering(vk::RenderingInfo& info);
+        static void EndRendering();
+
+        static void BeginLabel(std::string labelName, std::array<float, 4> colours);
+        static void EndLabel();
 
         static void BindPipeline(vk::raii::Pipeline& pipeline);
         static void BindGeometryBuffer(const GeometryBuffer& buffer);
@@ -45,12 +53,17 @@ namespace SUN {
         static void SetDepthWriteEnable(bool state);
 
         static void WriteLightingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler);
+        static void WriteDescriptors(const std::span<vk::WriteDescriptorSet> writes);
         static void WriteToneMappingDescriptorSets(const DescriptorResources& resorces, vk::raii::Sampler& sampler);
         static void WriteBloomDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler, bool horizontal);
 
         static vk::Format GetSwapchainFormat();
+        static vk::Extent2D GetSwapchainExtent();
+        static vk::Image& GetCurrentSwapchainImage();
+        static vk::raii::ImageView& GetCurrentSwapchainImageView();
 
-    private:
+        static void DestroyRenderImage(RenderImage& image);
+
         static void TransitionImageLayout(	    
             vk::Image               image,
             vk::ImageLayout         old_layout,
@@ -74,6 +87,7 @@ namespace SUN {
 
         static void ImageBarriers(std::span<const vk::ImageMemoryBarrier2> barriers);
 
+    public:
         static GraphicsContext* mContextPtr;
     };
 }

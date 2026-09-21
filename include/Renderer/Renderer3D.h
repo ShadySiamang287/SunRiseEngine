@@ -4,10 +4,16 @@
 #include "Renderer/RenderQueue.h"
 #include "Renderer/DeferredRenderer.h"
 
+#include "Renderer/PostProcessor/PostProcessor.h"
+#include "Renderer/PostProcessor/BloomPass.h"
+#include "Renderer/PostProcessor/ToneMappingPass.h"
+
 namespace SUN {
 
     class Renderer3D{
     public:
+        Renderer3D();
+
         void BeginScene(const Camera& camera);
 
         void SubmitMesh(
@@ -25,11 +31,16 @@ namespace SUN {
 
         void EndScene(RenderContext& context);
     private:
+        PostProcessor mPostProcessor;
+        std::unique_ptr<BloomPass> mBloomPass;
+        std::unique_ptr<ToneMappingPass> mToneMappingPass;
+
         RenderQueue mRenderQueue;
         const Camera* mCamera = nullptr;
-        DeferredRenderer mDeferredRenderer;
+        std::unique_ptr<DeferredRenderer> mDeferredRenderer;
 
         std::vector<GPUDirectionalLight> mDirectionalLights;
         std::vector<GPUPointLight> mPointLights;
+        vk::raii::Sampler mSampler = nullptr;
     };
 }
