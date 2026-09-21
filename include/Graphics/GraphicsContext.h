@@ -46,6 +46,8 @@ namespace SUN{
         void Init(Window* window);
         void Shutdown();
 
+        uint32_t GetFrameIndex() {return mFrameIndex;} 
+
     private:
         void CreateInstance();
         std::vector<const char*> getRequiredInstanceExtensions();

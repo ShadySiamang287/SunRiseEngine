@@ -55,7 +55,8 @@ void Application::Run() {
         }
 
         RenderContext context {
-            mRenderer3D.get()
+            mRenderer3D.get(),
+            mGraphicsContextPtr->GetFrameIndex()
         };
 
         for (auto& layer : mLayerStack) {

@@ -80,16 +80,6 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
     };
     GraphicsCommands::ImageBarriers(barriers);
 
-        vk::RenderingAttachmentInfo swapchain{
-        .imageView = GraphicsCommands::GetCurrentSwapchainImageView(),
-        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .loadOp = vk::AttachmentLoadOp::eClear,
-        .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue{
-            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
-        }
-    };
-
     vk::DescriptorImageInfo hdrInfo{
         .sampler = nullptr,
         .imageView = *mHDRImages[context.frameIndex].image.view,
@@ -130,7 +120,7 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
             .pImageInfo = &bloomInfo
         },
 
-        vk::WriteDescriptorSet{
+    vk::WriteDescriptorSet{
             .dstSet = *mDescriptors.sets[context.frameIndex],
             .dstBinding = 2,
             .descriptorCount = 1,
@@ -138,6 +128,19 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
             .pImageInfo = &samplerInfo
         }
     };
+
+    GraphicsCommands::WriteDescriptors(writes);
+
+    vk::RenderingAttachmentInfo swapchain{
+        .imageView = GraphicsCommands::GetCurrentSwapchainImageView(),
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue{
+            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        }
+    };
+
 
     vk::RenderingInfo renderingInfo{
         .renderArea = {
