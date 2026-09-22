@@ -10,6 +10,8 @@
 
 #include "Renderer/PostProcessor/PostProcessorPass.h"
 
+#include "Graphics/Texture2D.h"
+
 namespace SUN {
     struct PipelineConfig {
         std::filesystem::path vertexFile;
@@ -70,6 +72,8 @@ namespace SUN {
         static DescriptorResources CreateDescriptorResources(std::span<vk::DescriptorSetLayoutBinding> bindings);
         static vk::raii::PipelineLayout CreatePipelineLayout(vk::ShaderStageFlags flags, uint32_t pushConstantsSize, DescriptorResources* resources = nullptr);
         static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName);
+
+        static Texture2D CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, vk::Format format);
 
         static vk::raii::Sampler CreateSampler(const SamplerConfig& config);
 

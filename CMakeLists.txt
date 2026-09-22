@@ -78,6 +78,7 @@ target_sources(SunriseEngine
     src/Graphics/ShaderCache.cpp
     src/Graphics/GraphicsCommands.cpp
     src/Graphics/Buffers.cpp
+    src/Graphics/Texture2D.cpp
 
     src/Renderer/Renderer3D.cpp
     src/Renderer/DeferredRenderer.cpp

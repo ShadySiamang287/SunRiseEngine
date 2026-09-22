@@ -77,7 +77,7 @@ namespace SUN{
         void CreateCommandPool();
 
         void CreateCommandBuffers();
-        
+
         void CreateImmediateSubmitContext();
 
         void CreateFrameSyncObjects();
@@ -146,6 +146,7 @@ namespace SUN{
         friend Buffer;
         friend ShaderBuffer;
         friend Application;
+        friend class Texture2D;
     };
 }
 

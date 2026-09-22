@@ -6,6 +6,8 @@
 #include "Logger.h"
 #include "Graphics/vertex.h"
 
+#include "Graphics/GraphicsCommands.h"
+
 using namespace SUN;
 
 ResourceFactory::ResourceFactory(GraphicsContext* context) : mGraphicsContextPtr(context) {
@@ -198,6 +200,209 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
     mInstancePtr->mGraphicsContextPtr->mDevice.setDebugUtilsObjectNameEXT(nameInfo);
 
     return std::move(pipeline);
+}
+
+Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, vk::Format format) {
+    auto* context = mInstancePtr->mGraphicsContextPtr;
+    
+    Texture2D texture;
+    texture.mContext = context;
+    texture.mFormat = format;
+    texture.mExtent = {
+        width,
+        height
+    };
+    texture.mMipLevels = 1;
+
+    const vk::DeviceSize imageSize = static_cast<vk::DeviceSize>(width) * static_cast<vk::DeviceSize>(height) * 4;
+
+    VkBuffer stagingBuffer = VK_NULL_HANDLE;
+    VmaAllocation stagingAllocation = VK_NULL_HANDLE;
+    VmaAllocationInfo stagingAllocationInfo{};
+
+
+    vk::BufferCreateInfo stagingInfo{
+        .size = imageSize,
+        .usage = vk::BufferUsageFlagBits::eTransferSrc,
+        .sharingMode = vk::SharingMode::eExclusive
+    };
+
+    VmaAllocationCreateInfo stagingAllocInfo{
+        .flags =
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+            VMA_ALLOCATION_CREATE_MAPPED_BIT,
+
+        .usage = VMA_MEMORY_USAGE_AUTO
+    };
+
+    VkResult result = vmaCreateBuffer(
+        context->mAllocator,
+        reinterpret_cast<const VkBufferCreateInfo*>(
+            &stagingInfo
+        ),
+        &stagingAllocInfo,
+        &stagingBuffer,
+        &stagingAllocation,
+        &stagingAllocationInfo
+    );
+
+    std::memcpy(
+        stagingAllocationInfo.pMappedData,
+        pixels,
+        static_cast<size_t>(imageSize)
+    );
+vk::ImageCreateInfo imageInfo{
+        .imageType = vk::ImageType::e2D,
+        .format = format,
+
+        .extent = {
+            width,
+            height,
+            1
+        },
+
+        .mipLevels = 1,
+        .arrayLayers = 1,
+
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+
+        .usage =
+            vk::ImageUsageFlagBits::eTransferDst |
+            vk::ImageUsageFlagBits::eSampled,
+
+        .sharingMode = vk::SharingMode::eExclusive,
+        .initialLayout = vk::ImageLayout::eUndefined
+    };
+
+    VmaAllocationCreateInfo imageAllocInfo{
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
+    };
+
+    VkImage rawImage = VK_NULL_HANDLE;
+
+    result = vmaCreateImage(
+        context->mAllocator,
+        reinterpret_cast<const VkImageCreateInfo*>(
+            &imageInfo
+        ),
+        &imageAllocInfo,
+        &rawImage,
+        &texture.mImage.allocation,
+        nullptr
+    );
+
+    if (result != VK_SUCCESS)
+    {
+        vmaDestroyBuffer(
+            context->mAllocator,
+            stagingBuffer,
+            stagingAllocation
+        );
+
+        throw std::runtime_error(
+            "Failed to create Texture2D image"
+        );
+    }
+
+    texture.mImage.image = rawImage;
+
+        context->ImmediateSubmit(
+        [&](vk::raii::CommandBuffer& cmd)
+        {
+            vk::ImageMemoryBarrier2 toTransfer{
+                .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
+                .srcAccessMask = {},
+
+                .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .dstAccessMask =vk::AccessFlagBits2::eTransferWrite,
+
+                .oldLayout = vk::ImageLayout::eUndefined,
+
+                .newLayout = vk::ImageLayout::eTransferDstOptimal,
+
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+
+                .image = texture.mImage.image,
+
+                .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+
+            vk::DependencyInfo dependency{
+                .imageMemoryBarrierCount = 1,
+                .pImageMemoryBarriers = &toTransfer
+            };
+
+            cmd.pipelineBarrier2(dependency);
+
+            vk::BufferImageCopy copyRegion{
+                .bufferOffset = 0,
+                .bufferRowLength = 0,
+                .bufferImageHeight = 0,
+
+                .imageSubresource = {
+                    .aspectMask =
+                        vk::ImageAspectFlagBits::eColor,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+
+                .imageOffset = { 0, 0, 0 },
+
+                .imageExtent = {
+                    width,
+                    height,
+                    1
+                }
+            };
+
+            cmd.copyBufferToImage(
+                stagingBuffer,
+                texture.mImage.image,
+                vk::ImageLayout::eTransferDstOptimal,
+                copyRegion
+            );
+
+            vk::ImageMemoryBarrier2 toShaderRead{
+                .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+
+                .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+                .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
+
+                .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+                .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+
+                .image = texture.mImage.image,
+
+                .subresourceRange = {
+                    .aspectMask =
+                        vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+
+            dependency.pImageMemoryBarriers =
+                &toShaderRead;
+
+            cmd.pipelineBarrier2(dependency);
+        }
+    );
 }
 
 vk::raii::Sampler ResourceFactory::CreateSampler(const SamplerConfig& config) {
