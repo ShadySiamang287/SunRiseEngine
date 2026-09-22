@@ -55,7 +55,7 @@ FXAAPass::FXAAPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& toneMappingIma
         .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
 
         .colorAttachmentFormats = {
-            vk::Format::eR8G8B8A8Unorm
+            GraphicsCommands::GetSwapchainFormat()
         },
         .colorAttachmentLocations = {
             0

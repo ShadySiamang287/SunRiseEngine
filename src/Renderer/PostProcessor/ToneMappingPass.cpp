@@ -50,7 +50,7 @@ ToneMappingPass::ToneMappingPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& 
         .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
 
         .colorAttachmentFormats = {
-            GraphicsCommands::GetSwapchainFormat()
+            vk::Format::eR8G8B8A8Unorm
         },
         .colorAttachmentLocations = {
             0
