@@ -4,7 +4,6 @@
 #include "Renderer/RenderQueue.h"
 #include "Renderer/DeferredRenderer.h"
 
-#include "Renderer/PostProcessor/PostProcessor.h"
 #include "Renderer/PostProcessor/BloomPass.h"
 #include "Renderer/PostProcessor/ToneMappingPass.h"
 #include "Renderer/PostProcessor/FXAAPass.h"
@@ -15,7 +14,7 @@ namespace SUN {
     public:
         Renderer3D();
 
-        void BeginScene(const Camera& camera);
+        void BeginScene(Camera& camera);
 
         void SubmitMesh(
             const Mesh& Mesh,
@@ -33,7 +32,6 @@ namespace SUN {
         void EndScene(RenderContext& context);
         void Resize(vk::Extent2D newSize);
     private:
-        PostProcessor mPostProcessor;
         std::unique_ptr<BloomPass> mBloomPass;
         std::unique_ptr<ToneMappingPass> mToneMappingPass;
         std::unique_ptr<FXAAPass> mFXAAPass;

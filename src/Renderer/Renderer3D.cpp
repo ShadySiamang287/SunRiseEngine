@@ -2,7 +2,6 @@
 #include "Graphics/ResourceFactory.h"
 #include "Graphics/GraphicsCommands.h"
 
-#include <iostream>
 
 using namespace SUN;
 
@@ -33,11 +32,13 @@ Renderer3D::Renderer3D() {
     mFXAAPass = std::make_unique<FXAAPass>(mToneMappingPass->GetOutput(0));
 }
 
-void Renderer3D::BeginScene(const Camera& camera) {
+void Renderer3D::BeginScene(Camera& camera) {
     mRenderQueue.Clear();
     mDirectionalLights.clear();
     mPointLights.clear();
 
+    vk::Extent2D viewport = GraphicsCommands::GetSwapchainExtent();
+    camera.AspectRatio = (static_cast<float>(viewport.width) / static_cast<float>(viewport.height));
     mCamera = &camera;
 }
 
