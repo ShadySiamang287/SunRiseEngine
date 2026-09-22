@@ -2,6 +2,8 @@
 
 #include "Graphics/vertex.h"
 
+#include <functional>
+
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace SUN{
@@ -12,6 +14,12 @@ namespace SUN{
     class Buffer;
     class ShaderBuffer;
     class Application;
+
+    struct ImmediateSubmitContext {
+        vk::raii::CommandPool commandPool = nullptr;
+        vk::raii::CommandBuffer commandBuffer = nullptr;
+        vk::raii::Fence fence = nullptr;
+    };
 
     struct GBuffer{
         AllocatedImage Albedo;
@@ -69,14 +77,18 @@ namespace SUN{
         void CreateCommandPool();
 
         void CreateCommandBuffers();
+        
+        void CreateImmediateSubmitContext();
 
         void CreateFrameSyncObjects();
         void CreateSwapchainSyncObjects();
-
+        
+        
         void CreateGBuffers();
         void DestroyGBuffers();
 
         void CreateDesciptorPool();
+
 
         void TransitionImageLayoutImmediate(
             vk::Image image,
@@ -88,6 +100,8 @@ namespace SUN{
             vk::PipelineStageFlags2 dst_stage_mask,
             vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor
         );
+
+        void ImmediateSubmit(const std::function<void(vk::raii::CommandBuffer&)>& function);
 
         vk::raii::Context mContext;
 
@@ -118,6 +132,8 @@ namespace SUN{
         
         vk::raii::DebugUtilsMessengerEXT mDebugMessenger = nullptr;
         VmaAllocator mAllocator;
+
+        ImmediateSubmitContext mImmediateSubmit;
 
         uint32_t mFrameIndex = 0;
         uint32_t mImageIndex;

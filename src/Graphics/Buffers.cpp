@@ -131,26 +131,13 @@ void Buffer::Upload(const void* data, size_t size, size_t offset) {
     cmdAllocInfo.level              = vk::CommandBufferLevel::ePrimary;
     cmdAllocInfo.commandBufferCount = 1;
 
-    auto cmdBuffers = mContextPtr->mDevice.allocateCommandBuffers(cmdAllocInfo);
-    vk::raii::CommandBuffer cmd = std::move(cmdBuffers.front());
-
-    cmd.begin(vk::CommandBufferBeginInfo{.flags =  vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
-
-    vk::BufferCopy copyRegion{};
-    copyRegion.srcOffset = 0;
-    copyRegion.dstOffset = offset;
-    copyRegion.size      = size;
-    cmd.copyBuffer(vk::Buffer(stagingBuffer), mBuffer, copyRegion);
-
-    cmd.end();
-
-    vk::SubmitInfo submitInfo{};
-    submitInfo.commandBufferCount = 1;
-    vk::CommandBuffer rawCmd = *cmd;
-    submitInfo.pCommandBuffers = &rawCmd;
-
-    mContextPtr->mGraphicsQueue.submit(submitInfo);
-    mContextPtr->mGraphicsQueue.waitIdle(); // fine for coursework; swap for a fence if this gets called often
+    mContextPtr->ImmediateSubmit([&](vk::raii::CommandBuffer& cmd) {
+        vk::BufferCopy copyRegion{};
+        copyRegion.srcOffset = 0;
+        copyRegion.dstOffset = offset;
+        copyRegion.size      = size;
+        cmd.copyBuffer(vk::Buffer(stagingBuffer), mBuffer, copyRegion);
+    });
 
     vmaDestroyBuffer(mContextPtr->mAllocator, stagingBuffer, stagingAllocation);
 }

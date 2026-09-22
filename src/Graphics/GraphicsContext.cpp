@@ -43,9 +43,10 @@ void GraphicsContext::Init(Window* window){
 
     CreateSwapchain();
     CreateImageViews();
-
+    
     CreateCommandPool();
     CreateCommandBuffers();
+    CreateImmediateSubmitContext();
 
     CreateFrameSyncObjects();
     CreateSwapchainSyncObjects();
@@ -613,6 +614,27 @@ void GraphicsContext::CreateDesciptorPool(){
     mDescriptorPool = vk::raii::DescriptorPool(mDevice, poolInfo);
 }
 
+void GraphicsContext::CreateImmediateSubmitContext() {
+    vk::CommandPoolCreateInfo poolInfo {
+        .flags = vk::CommandPoolCreateFlagBits::eTransient |
+                vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        .queueFamilyIndex = mQueueIndex
+    };
+    mImmediateSubmit.commandPool = vk::raii::CommandPool(mDevice, poolInfo);
+
+    vk::CommandBufferAllocateInfo allocInfo{
+        .commandPool = *mImmediateSubmit.commandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+    auto buffers = mDevice.allocateCommandBuffers(allocInfo);
+    mImmediateSubmit.commandBuffer = std::move(buffers.front());
+
+    vk::FenceCreateInfo fenceInfo{};
+
+    mImmediateSubmit.fence =vk::raii::Fence(mDevice, fenceInfo);
+}
+
 void GraphicsContext::TransitionImageLayoutImmediate(
     vk::Image image,
     vk::ImageLayout old_layout,
@@ -623,20 +645,7 @@ void GraphicsContext::TransitionImageLayoutImmediate(
     vk::PipelineStageFlags2 dst_stage_mask,
     vk::ImageAspectFlags aspectMask
 ) {
-    // 1. Allocate a temporary command buffer from your existing pool
-    vk::CommandBufferAllocateInfo allocInfo{
-        .commandPool = *mCommandPool,
-        .level = vk::CommandBufferLevel::ePrimary,
-        .commandBufferCount = 1
-    };
-    vk::raii::CommandBuffers tempBuffers(mDevice, allocInfo);
-    vk::raii::CommandBuffer& cmd = tempBuffers.front();
-
-    // 2. Begin, one-time-submit
-    cmd.begin(vk::CommandBufferBeginInfo{
-        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
-    });
-
+    ImmediateSubmit([&](vk::raii::CommandBuffer& cmd) {
     // 3. Record the barrier
     vk::ImageMemoryBarrier2 barrier{
         .srcStageMask = src_stage_mask,
@@ -662,21 +671,31 @@ void GraphicsContext::TransitionImageLayoutImmediate(
         .pImageMemoryBarriers = &barrier
     };
     cmd.pipelineBarrier2(dependency);
+    });
+}
 
-    // 4. End and submit
+void GraphicsContext::ImmediateSubmit(const std::function<void(vk::raii::CommandBuffer&)>& function){
+    auto& cmd = mImmediateSubmit.commandBuffer;
+    auto& fence = mImmediateSubmit.fence;
+
+    cmd.reset();
+
+    cmd.begin({
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    });
+
+    function(cmd);
     cmd.end();
-
-    vk::SubmitInfo submitInfo{
+    vk::SubmitInfo submitInfo {
         .commandBufferCount = 1,
         .pCommandBuffers = &*cmd
     };
-    mGraphicsQueue.submit(submitInfo, nullptr);
-
-    // 5. Wait for it to finish before returning — this is a one-shot setup call,
-    //    so blocking here is fine (don't do this per-frame!)
-    mGraphicsQueue.waitIdle();
-
-    // tempBuffers goes out of scope here and frees itself
+    mGraphicsQueue.submit(submitInfo, fence);
+    auto result = mDevice.waitForFences(*fence, vk::True, UINT64_MAX);
+    
+    if (result != vk::Result::eSuccess)
+        throw std::runtime_error("Immediate submit failed");
+    mDevice.resetFences(*fence);
 }
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       severity,
