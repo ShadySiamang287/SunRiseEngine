@@ -31,6 +31,7 @@ namespace SUN {
         );
 
         void EndScene(RenderContext& context);
+        void Resize(vk::Extent2D newSize);
     private:
         PostProcessor mPostProcessor;
         std::unique_ptr<BloomPass> mBloomPass;

@@ -54,14 +54,14 @@ void BloomPass::Execute(const PostProcessContext& context) {
 
     vk::DescriptorImageInfo brightnessInfo {
         .sampler = nullptr,
+        .imageView = mBrightnessImages[context.frameIndex].image.view,
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-        .imageView = mBrightnessImages[context.frameIndex].image.view
     };
 
     vk::DescriptorImageInfo pingInfo {
         .sampler = nullptr,
+        .imageView = mBlurHorizontal[context.frameIndex].image.view,
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-        .imageView = mBlurHorizontal[context.frameIndex].image.view
     };
 
     vk::DescriptorImageInfo samplerInfo{

@@ -51,8 +51,10 @@ void Application::Run() {
         }
 
         if (!GraphicsCommands::BeginFrame()) {
+            HandleRendererResize();
             continue;
         }
+        HandleRendererResize();
 
         RenderContext context {
             mRenderer3D.get(),
@@ -68,4 +70,18 @@ void Application::Run() {
 
 void Application::PushLayer(std::unique_ptr<Layer> layer){
     mLayerStack.PushLayer(std::move(layer));
+}
+
+void Application::HandleRendererResize() {
+    const uint64_t generation = mGraphicsContextPtr->GetSwapchainGeneration(); 
+
+
+    if (generation == mRendererSwapchainGeneration)
+        return;
+
+    mRenderer3D->Resize(
+        GraphicsCommands::GetSwapchainExtent()
+    );
+
+    mRendererSwapchainGeneration = generation;
 }

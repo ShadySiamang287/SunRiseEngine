@@ -89,6 +89,11 @@ target_sources(SunriseEngine
 
 target_include_directories(SunriseEngine PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
+target_precompile_headers(SunriseEngine
+    PRIVATE
+        include/SunrisePCH.h
+)
+
 target_link_libraries(SunriseEngine 
 PUBLIC
     glm::glm

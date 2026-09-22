@@ -51,8 +51,6 @@ void GraphicsContext::Init(Window* window){
     CreateSwapchainSyncObjects();
 
     CreateGBuffers();
-    CreateBloomTargets();
-    CreateHDRS();
 
     CreateDesciptorPool();
 }
@@ -334,6 +332,32 @@ uint32_t GraphicsContext::ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR con
 }
 
 void GraphicsContext::RecreateSwapChain() {
+
+    int width = 0;
+    int height = 0;
+
+    glfwGetFramebufferSize(
+        mWindowPtr->mWindowPtr,
+        &width,
+        &height
+    );
+
+    // Window is minimized.
+    while (width == 0 || height == 0)
+    {
+        if (mWindowPtr->ShouldClose())
+            return;
+
+        // Don't burn CPU while minimized.
+        glfwWaitEvents();
+
+        glfwGetFramebufferSize(
+            mWindowPtr->mWindowPtr,
+            &width,
+            &height
+        );
+    }
+
     mDevice.waitIdle();
 
     CleanupSwapChain();
@@ -344,13 +368,11 @@ void GraphicsContext::RecreateSwapChain() {
     CreateSwapchainSyncObjects();
 
     CreateGBuffers();
-    CreateBloomTargets();
-    CreateHDRS();
+    ++mSwapchainGeneration;
 }
 
 void GraphicsContext::CleanupSwapChain() {
-    DestroyHDRS();
-    DestroyBloomTargets();
+
     DestroyGBuffers();
 
     mRenderFinishedSemaphores.clear();
@@ -573,213 +595,6 @@ void GraphicsContext::DestroyGBuffers() {
         vmaDestroyImage(mAllocator, buffer.Albedo.image, buffer.Albedo.allocation);
         vmaDestroyImage(mAllocator, buffer.Normal.image, buffer.Normal.allocation);
         vmaDestroyImage(mAllocator, buffer.Depth.image, buffer.Depth.allocation);
-    }
-}
-
-void GraphicsContext::CreateHDRS() {
-    const vk::ImageCreateInfo hdrInfo {
-        .sType = vk::StructureType::eImageCreateInfo,
-        .imageType = vk::ImageType::e2D,
-        .format = vk::Format::eR16G16B16A16Sfloat,
-        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
-    };
-
-    VmaAllocationCreateInfo allocInfo {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
-    };
-
-    for (auto& frame : mFrames) {
-        AllocatedImage& hdr = frame.hdrTarget;
-        VkImage tempHDR;
-        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&hdrInfo), &allocInfo, &tempHDR, &hdr.allocation, nullptr);
-        hdr.image = tempHDR;
-
-        TransitionImageLayoutImmediate(
-            hdr.image,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        );
-
-        vk::ImageViewCreateInfo hdrView{
-            .image = hdr.image,
-            .viewType = vk::ImageViewType::e2D,
-            .format = vk::Format::eR16G16B16A16Sfloat,
-            .subresourceRange = {
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-        hdr.view = vk::raii::ImageView(mDevice, hdrView);
-    }
-}
-
-void GraphicsContext::DestroyHDRS() {
-    for (auto& frame : mFrames){
-        AllocatedImage& hdrImage = frame.hdrTarget;
-        hdrImage.view = nullptr;
-        vmaDestroyImage(mAllocator, hdrImage.image, hdrImage.allocation);
-    }
-}
-
-void GraphicsContext::CreateBloomTargets(){
-    const vk::ImageCreateInfo targetInfo {
-        .sType = vk::StructureType::eImageCreateInfo,
-        .imageType = vk::ImageType::e2D,
-        .format = vk::Format::eR16G16B16A16Sfloat,
-        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
-    };
-
-    VmaAllocationCreateInfo allocInfo {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
-    };
-
-    for (auto& frame : mFrames){ 
-        BloomBuffers& bloomBuffer = frame.bloomTargets;
-        VkImage tempBright;
-        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&targetInfo), &allocInfo, &tempBright, &bloomBuffer.brightness.allocation, nullptr);
-        bloomBuffer.brightness.image = tempBright;
-
-        TransitionImageLayoutImmediate(
-            bloomBuffer.brightness.image,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        );
-
-        vk::ImageViewCreateInfo bloomView{
-            .image = bloomBuffer.brightness.image,
-            .viewType = vk::ImageViewType::e2D,
-            .format = vk::Format::eR16G16B16A16Sfloat,
-            .subresourceRange = {
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-        bloomBuffer.brightness.view = vk::raii::ImageView(mDevice, bloomView);
-
-        VkImage tempPing;
-        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&targetInfo), &allocInfo, &tempPing, &bloomBuffer.ping.allocation, nullptr);
-        bloomBuffer.ping.image = tempPing;
-
-        TransitionImageLayoutImmediate(
-            bloomBuffer.ping.image,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        );
-
-        vk::ImageViewCreateInfo pingView{
-            .image = bloomBuffer.ping.image,
-            .viewType = vk::ImageViewType::e2D,
-            .format = vk::Format::eR16G16B16A16Sfloat,
-            .subresourceRange = {
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-        bloomBuffer.ping.view = vk::raii::ImageView(mDevice, pingView);
-
-        VkImage tempPong;
-        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&targetInfo), &allocInfo, &tempPong, &bloomBuffer.pong.allocation, nullptr);
-        bloomBuffer.pong.image = tempPong;
-
-        TransitionImageLayoutImmediate(
-            bloomBuffer.pong.image,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        );
-
-        vk::ImageViewCreateInfo pongView{
-            .image = bloomBuffer.pong.image,
-            .viewType = vk::ImageViewType::e2D,
-            .format = vk::Format::eR16G16B16A16Sfloat,
-            .subresourceRange = {
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-        bloomBuffer.pong.view = vk::raii::ImageView(mDevice, pongView);
-
-        vk::DebugUtilsObjectNameInfoEXT nameInfo{
-            .objectType = vk::ObjectType::eImage,
-            .objectHandle =
-                reinterpret_cast<uint64_t>(
-                    static_cast<VkImage>(bloomBuffer.ping.image)
-                ),
-            .pObjectName = "Bloom Brightness"
-        };
-
-        mDevice.setDebugUtilsObjectNameEXT(nameInfo);
-
-        nameInfo = {
-            .objectType = vk::ObjectType::eImage,
-            .objectHandle =
-                reinterpret_cast<uint64_t>(
-                    static_cast<VkImage>(bloomBuffer.ping.image)
-                ),
-            .pObjectName = "Bloom Ping"
-        };
-
-        mDevice.setDebugUtilsObjectNameEXT(nameInfo);
-
-        nameInfo = {
-            .objectType = vk::ObjectType::eImage,
-            .objectHandle =
-                reinterpret_cast<uint64_t>(
-                    static_cast<VkImage>(bloomBuffer.pong.image)
-                ),
-            .pObjectName = "Bloom Pong"
-        };
-
-        mDevice.setDebugUtilsObjectNameEXT(nameInfo);
-    }
-}
-
-void GraphicsContext::DestroyBloomTargets() {
-    for (auto& frame : mFrames){
-        BloomBuffers& buffer = frame.bloomTargets;
-        buffer.brightness.view = nullptr;
-        buffer.ping.view = nullptr;
-        buffer.pong.view = nullptr;
-        vmaDestroyImage(mAllocator, buffer.brightness.image, buffer.brightness.allocation);
-        vmaDestroyImage(mAllocator, buffer.ping.image, buffer.ping.allocation);
-        vmaDestroyImage(mAllocator, buffer.pong.image, buffer.pong.allocation);
     }
 }
 

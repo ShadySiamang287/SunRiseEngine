@@ -1,8 +1,4 @@
 #pragma once
-#include <vulkan/vulkan_raii.hpp>
-
-#define VMA_VULKAN_VERSION 1004000 // Vulkan 1.4
-#include <vk_mem_alloc.h>
 
 #include "Graphics/vertex.h"
 
@@ -23,17 +19,9 @@ namespace SUN{
         AllocatedImage Depth;
     };
 
-    struct BloomBuffers{
-        AllocatedImage brightness;
-        AllocatedImage ping;
-        AllocatedImage pong;
-    };
-
     struct FrameResources{
         vk::raii::CommandBuffer commandBuffer = nullptr;
         GBuffer gbuffer;
-        AllocatedImage hdrTarget;
-        BloomBuffers bloomTargets;
 
         vk::raii::Semaphore imageAvailable = nullptr;
         vk::raii::Fence inFlightFence = nullptr;
@@ -47,6 +35,10 @@ namespace SUN{
         void Shutdown();
 
         uint32_t GetFrameIndex() {return mFrameIndex;} 
+
+        uint64_t GetSwapchainGeneration() const {
+            return mSwapchainGeneration;
+        }
 
     private:
         void CreateInstance();
@@ -83,12 +75,6 @@ namespace SUN{
 
         void CreateGBuffers();
         void DestroyGBuffers();
-
-        void CreateHDRS();
-        void DestroyHDRS();
-
-        void CreateBloomTargets();
-        void DestroyBloomTargets();
 
         void CreateDesciptorPool();
 
@@ -135,6 +121,8 @@ namespace SUN{
 
         uint32_t mFrameIndex = 0;
         uint32_t mImageIndex;
+
+        uint64_t mSwapchainGeneration = 0;
 
         friend ResourceFactory;
         friend ShaderCache;

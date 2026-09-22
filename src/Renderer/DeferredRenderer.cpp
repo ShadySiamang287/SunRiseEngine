@@ -93,17 +93,11 @@ DeferredRenderer::DeferredRenderer(vk::raii::Sampler& sampler) : mImageSampler(s
     mObjects.reserve(MAX_OBJECTS);
     mBatches.reserve(256);
 
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
-        mHDRImages[i] = ResourceFactory::CreateRenderImage(vk::Format::eR16G16B16A16Sfloat, GraphicsCommands::GetSwapchainExtent(), vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::ImageAspectFlagBits::eColor);
-        mBrightnessImages[i] = ResourceFactory::CreateRenderImage(vk::Format::eR16G16B16A16Sfloat, GraphicsCommands::GetSwapchainExtent(), vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::ImageAspectFlagBits::eColor);
-    }
+    CreateImages(GraphicsCommands::GetSwapchainExtent());
 }
 
 DeferredRenderer::~DeferredRenderer() {
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        GraphicsCommands::DestroyRenderImage(mHDRImages[i]);
-        GraphicsCommands::DestroyRenderImage(mBrightnessImages[i]);
-    }
+    DestroyImages();
 }
 
 void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* cam,
@@ -254,6 +248,42 @@ std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& DeferredRenderer::GetBrightnessIm
 }
 std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& DeferredRenderer::GetHDRImages() {
     return mHDRImages;
+}
+
+void DeferredRenderer::Resize(vk::Extent2D newSize){
+    DestroyImages();
+    CreateImages(newSize);
+}
+
+void DeferredRenderer::DestroyImages() {
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        GraphicsCommands::DestroyRenderImage(mHDRImages[i]);
+        GraphicsCommands::DestroyRenderImage(mBrightnessImages[i]);
+    }
+}
+
+void DeferredRenderer::CreateImages(vk::Extent2D extent){
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        mHDRImages[i] = ResourceFactory::CreateRenderImage(
+            vk::Format::eR16G16B16A16Sfloat,
+            extent,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageUsageFlagBits::eColorAttachment |
+            vk::ImageUsageFlagBits::eSampled,
+            vk::ImageAspectFlagBits::eColor
+        );
+
+        mBrightnessImages[i] = ResourceFactory::CreateRenderImage(
+            vk::Format::eR16G16B16A16Sfloat,
+            extent,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageUsageFlagBits::eColorAttachment |
+            vk::ImageUsageFlagBits::eSampled,
+            vk::ImageAspectFlagBits::eColor
+        );
+    }
 }
 
 void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {

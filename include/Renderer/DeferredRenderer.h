@@ -16,10 +16,16 @@ namespace SUN {
             std::span<const GPUDirectionalLight> directionalLights,
             std::span<const GPUPointLight> pointLightsm);
 
+        void Resize(vk::Extent2D newSize);
+
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetBrightnessImages();
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetHDRImages();
 
         private:
+
+        void DestroyImages();
+        void CreateImages(vk::Extent2D extent);
+
         void BuildBatches(const RenderQueue& renderQueue);
 
         DescriptorResources mLightingDescriptors; 

@@ -25,6 +25,8 @@ namespace SUN{
         void PushLayer(std::unique_ptr<Layer> layer);
     
     private:
+        void HandleRendererResize();
+
         std::unique_ptr<Window> mWindowPtr;
         std::unique_ptr<GraphicsContext> mGraphicsContextPtr;
         std::unique_ptr<ResourceFactory> mResourceFactoryPtr;
@@ -33,5 +35,7 @@ namespace SUN{
         protected:
         TimeManager mTimeManager;
         LayerStack mLayerStack;
+
+        uint64_t mRendererSwapchainGeneration = 0;
     };
 }

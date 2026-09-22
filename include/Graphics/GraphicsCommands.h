@@ -25,9 +25,6 @@ namespace SUN {
         static void BeginGBufferPass();
         static void EndGBufferPass();
 
-        static void BeginLightingPass();
-        static void EndLightingPass();
-
         static void PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal);
 
         static void BeginRendering(vk::RenderingInfo& info);

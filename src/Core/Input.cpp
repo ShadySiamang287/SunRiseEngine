@@ -1,6 +1,6 @@
 #include "Core/Input.h"
 
-#include "core/Window.h"
+#include "Core/Window.h"
 
 using namespace SUN;
 

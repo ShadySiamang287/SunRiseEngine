@@ -54,13 +54,20 @@ void Renderer3D::EndScene(RenderContext& context) {
     };
     GraphicsCommands::BeginDraw();
     mDeferredRenderer->Render(context, mRenderQueue, mCamera, mDirectionalLights, mPointLights);
-    GraphicsCommands::BeginLabel("Post Processing", {1.f, 0.5f, 0.75f, 1.f});
+   // GraphicsCommands::BeginLabel("Post Processing", {1.f, 0.5f, 0.75f, 1.f});
     mBloomPass->Execute(postProcessContext);
     mToneMappingPass->Execute(postProcessContext);
     mFXAAPass->Execute(postProcessContext);
-    GraphicsCommands::EndLabel();
+    //GraphicsCommands::EndLabel();
     GraphicsCommands::EndDraw();
     mCamera = nullptr;
+}
+
+void Renderer3D::Resize(vk::Extent2D newSize) {
+    mDeferredRenderer->Resize(newSize);
+    mBloomPass->Resize(newSize);
+    mToneMappingPass->Resize(newSize);
+    mFXAAPass->Resize(newSize);
 }
 
 void Renderer3D::SubmitDirectionalLight(

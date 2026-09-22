@@ -174,8 +174,23 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
     GraphicsCommands::EndLabel();
 }
 
-void ToneMappingPass::Resize(vk::Extent2D) {
-    return;
+void ToneMappingPass::Resize(vk::Extent2D newSize) {
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        GraphicsCommands::DestroyRenderImage(
+            mToneMappedImages[i]
+        );
+
+        mToneMappedImages[i] =
+            ResourceFactory::CreateRenderImage(
+                vk::Format::eR8G8B8A8Unorm,
+                newSize,
+                vk::ImageLayout::eShaderReadOnlyOptimal,
+                vk::ImageUsageFlagBits::eColorAttachment |
+                vk::ImageUsageFlagBits::eSampled,
+                vk::ImageAspectFlagBits::eColor
+            );
+    }
 }
 
 std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& ToneMappingPass::GetOutput(uint32_t frameIndex){
