@@ -125,12 +125,6 @@ void Buffer::Upload(const void* data, size_t size, size_t offset) {
 
     std::memcpy(stagingAllocationInfo.pMappedData, data, size);
 
-    // One-shot command buffer for the copy
-    vk::CommandBufferAllocateInfo cmdAllocInfo{};
-    cmdAllocInfo.commandPool        = mContextPtr->mCommandPool;
-    cmdAllocInfo.level              = vk::CommandBufferLevel::ePrimary;
-    cmdAllocInfo.commandBufferCount = 1;
-
     mContextPtr->ImmediateSubmit([&](vk::raii::CommandBuffer& cmd) {
         vk::BufferCopy copyRegion{};
         copyRegion.srcOffset = 0;
