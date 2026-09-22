@@ -9,7 +9,7 @@ using namespace SUN;
 
 BloomPass::BloomPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& brightnessImages, vk::raii::Sampler& sampler) : mBrightnessImages(brightnessImages), mSampler(sampler) {    
     vk::Extent2D swapchainExtent = GraphicsCommands::GetSwapchainExtent();
-    CreateImages({swapchainExtent.width / 2, swapchainExtent.height / 2});
+    CreateImages(swapchainExtent);
     
     std::array<vk::DescriptorSetLayoutBinding, 2> bloomMappingBindings;
     bloomMappingBindings[0] = {
@@ -200,8 +200,8 @@ void BloomPass::Execute(const PostProcessContext& context) {
         .pColorAttachments = &pass2Attachment,
     };
     GraphicsCommands::BeginRendering(pass2Info);
-    GraphicsCommands::PushBloomConstants(mLayout, true);
-    GraphicsCommands::BindDescriptorSets(mLayout, mHorizontalDescriptors);
+    GraphicsCommands::PushBloomConstants(mLayout, false);
+    GraphicsCommands::BindDescriptorSets(mLayout, mVerticalDescriptors);
     GraphicsCommands::DrawFullScreenTriangle();
     GraphicsCommands::EndRendering();
     GraphicsCommands::TransitionImageLayout(

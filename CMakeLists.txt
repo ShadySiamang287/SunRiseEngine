@@ -84,6 +84,7 @@ target_sources(SunriseEngine
     src/Renderer/PostProcessor/PostProcessor.cpp
     src/Renderer/PostProcessor/BloomPass.cpp
     src/Renderer/PostProcessor/ToneMappingPass.cpp
+    src/Renderer/PostProcessor/FXAAPass.cpp
 )
 
 target_include_directories(SunriseEngine PUBLIC ${PROJECT_SOURCE_DIR}/include)

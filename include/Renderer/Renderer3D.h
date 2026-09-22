@@ -7,6 +7,7 @@
 #include "Renderer/PostProcessor/PostProcessor.h"
 #include "Renderer/PostProcessor/BloomPass.h"
 #include "Renderer/PostProcessor/ToneMappingPass.h"
+#include "Renderer/PostProcessor/FXAAPass.h"
 
 namespace SUN {
 
@@ -34,6 +35,7 @@ namespace SUN {
         PostProcessor mPostProcessor;
         std::unique_ptr<BloomPass> mBloomPass;
         std::unique_ptr<ToneMappingPass> mToneMappingPass;
+        std::unique_ptr<FXAAPass> mFXAAPass;
 
         RenderQueue mRenderQueue;
         const Camera* mCamera = nullptr;

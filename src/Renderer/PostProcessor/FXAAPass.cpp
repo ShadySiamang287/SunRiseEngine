@@ -1,77 +1,76 @@
-#include "Renderer/PostProcessor/ToneMappingPass.h"
-#include "Graphics/ResourceFactory.h"
+#include "Renderer/PostProcessor/FXAAPass.h"
 
+#include "Graphics/ResourceFactory.h"
 #include "Graphics/GraphicsCommands.h"
 
 using namespace SUN;
 
-ToneMappingPass::ToneMappingPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& bloomImages, std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& hdrImages, vk::raii::Sampler& sampler) : mBloomImages (bloomImages), mHDRImages(hdrImages), mSampler(sampler) {
-    
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        mToneMappedImages[i] = ResourceFactory::CreateRenderImage(
-            vk::Format::eR8G8B8A8Unorm, GraphicsCommands::GetSwapchainExtent(), 
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
-            vk::ImageAspectFlagBits::eColor
-        );
-    }
+FXAAPass::FXAAPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& toneMappingImages) : mToneMappingImages (toneMappingImages){
+    SamplerConfig samplerConfig{
+        .minFilter = vk::Filter::eLinear,
+        .magFilter = vk::Filter::eLinear,
+        .mipmapMode = vk::SamplerMipmapMode::eNearest,
 
-    std::array<vk::DescriptorSetLayoutBinding, 3> bindings;
+        .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+
+        .minLod = 0.0f,
+        .maxLod = 0.0f,
+        .mipLodBias = 0.0f,
+
+        .anisotropy = false,
+        .maxAnisotropy = 1.0f,
+
+        .compare = false,
+        .compareOp = vk::CompareOp::eAlways,
+
+        .borderColor = vk::BorderColor::eFloatOpaqueBlack
+    };
+    mSampler = ResourceFactory::CreateSampler(samplerConfig);
+
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings;
     bindings[0] = {
         .binding = 0,
         .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
-    
+
     bindings[1] = {
         .binding = 1,
-        .descriptorType = vk::DescriptorType::eSampledImage,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eFragment
-    };
-
-    bindings[2] = {
-        .binding = 2,
         .descriptorType = vk::DescriptorType::eSampler,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
-    
     mDescriptors = ResourceFactory::CreateDescriptorResources(bindings);
     mLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mDescriptors);
-    
+
     PipelineConfig pipelineConfig = {
         .vertexFile = "./shaders/lightVert.spv",
         .vertexName = "lightVert",
-        .fragFile = "./shaders/toneMappingFrag.spv",
-        .fragName = "toneMappingFrag",
+        .fragFile = "./shaders/FXAA.spv",
+        .fragName = "FXAA",
 
         .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
 
         .colorAttachmentFormats = {
-            GraphicsCommands::GetSwapchainFormat()
+            vk::Format::eR8G8B8A8Unorm
         },
         .colorAttachmentLocations = {
             0
         },
         .useVertexInput = false
     };
-    mPipeline = ResourceFactory::CreatePipeline(pipelineConfig, mLayout, "Tone mapping Pipeline");
+    mPipeline = ResourceFactory::CreatePipeline(pipelineConfig, mLayout, "FXAA Pipeline");
 }
 
-ToneMappingPass::~ToneMappingPass() {
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        GraphicsCommands::DestroyRenderImage(mToneMappedImages[i]);
-    }
-}
+void FXAAPass::Execute(const PostProcessContext& context) {
+    GraphicsCommands::BeginLabel("FXAA", {0.76F, 0.32F, .55F, 1.F});
 
-void ToneMappingPass::Execute(const PostProcessContext& context){
-    GraphicsCommands::BeginLabel("Tone Mapping", {0.32F, 0.32F, .76F, 1.F});
-    
     std::array<vk::ImageMemoryBarrier2, 2> barriers {
         GraphicsCommands::MakeImageBarrier(
-            mHDRImages[context.frameIndex].image.image,
+            mToneMappingImages[context.frameIndex].image.image,
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal,
 
@@ -82,8 +81,8 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
             vk::PipelineStageFlagBits2::eFragmentShader
         ),
         GraphicsCommands::MakeImageBarrier(
-            mToneMappedImages[context.frameIndex].image.image,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
+            GraphicsCommands::GetCurrentSwapchainImage(),
+            vk::ImageLayout::eUndefined,
             vk::ImageLayout::eColorAttachmentOptimal,
 
             {}, // src access
@@ -94,24 +93,16 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
         )
     };
     GraphicsCommands::ImageBarriers(barriers);
-
-    vk::DescriptorImageInfo hdrInfo{
+    vk::DescriptorImageInfo finalImageInfo {
         .sampler = nullptr,
-        .imageView = *mHDRImages[context.frameIndex].image.view,
+        .imageView = *mToneMappingImages[context.frameIndex].image.view,
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
     };
-
-    vk::DescriptorImageInfo bloomInfo {
-        .sampler = nullptr,
-        .imageView = *mBloomImages[context.frameIndex].image.view,
-        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-    };
-
+    
     vk::DescriptorImageInfo samplerInfo{
         .sampler = *mSampler
     };
-
-    std::array<vk::WriteDescriptorSet, 3> writes{
+    std::array<vk::WriteDescriptorSet, 2> writes{
         vk::WriteDescriptorSet{
             .dstSet = *mDescriptors.sets[context.frameIndex],
 
@@ -121,23 +112,11 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
             .descriptorType =
                 vk::DescriptorType::eSampledImage,
 
-            .pImageInfo = &hdrInfo
+            .pImageInfo = &finalImageInfo
         },     
-       vk::WriteDescriptorSet{
-            .dstSet = *mDescriptors.sets[context.frameIndex],
-
-            .dstBinding = 1,
-            .descriptorCount = 1,
-
-            .descriptorType =
-                vk::DescriptorType::eSampledImage,
-
-            .pImageInfo = &bloomInfo
-        },
-
         vk::WriteDescriptorSet{
             .dstSet = *mDescriptors.sets[context.frameIndex],
-            .dstBinding = 2,
+            .dstBinding = 1,
             .descriptorCount = 1,
             .descriptorType = vk::DescriptorType::eSampler,
             .pImageInfo = &samplerInfo
@@ -146,8 +125,8 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
 
     GraphicsCommands::WriteDescriptors(writes);
 
-    vk::RenderingAttachmentInfo swapchain{
-        .imageView = mToneMappedImages[context.frameIndex].image.view,
+        vk::RenderingAttachmentInfo swapchain{
+        .imageView = GraphicsCommands::GetCurrentSwapchainImageView(),
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
@@ -156,11 +135,10 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
         }
     };
 
-
     vk::RenderingInfo renderingInfo{
         .renderArea = {
             .offset = {0, 0},
-            .extent = mToneMappedImages[context.frameIndex].extent
+            .extent = GraphicsCommands::GetSwapchainExtent()
         },
         .layerCount = 1,          // Required when viewMask == 0
         .colorAttachmentCount = 1,
@@ -174,10 +152,10 @@ void ToneMappingPass::Execute(const PostProcessContext& context){
     GraphicsCommands::EndLabel();
 }
 
-void ToneMappingPass::Resize(vk::Extent2D) {
-    return;
+void FXAAPass::Resize(vk::Extent2D newSize) {
+
 }
 
-std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& ToneMappingPass::GetOutput(uint32_t frameIndex){
-    return mToneMappedImages;
+std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& FXAAPass::GetOutput(uint32_t frameIndex) {
+    return mToneMappingImages;
 }

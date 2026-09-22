@@ -30,6 +30,7 @@ Renderer3D::Renderer3D() {
     mDeferredRenderer = std::make_unique<DeferredRenderer>(mSampler);
     mBloomPass = std::make_unique<BloomPass>(mDeferredRenderer->GetBrightnessImages(), mSampler);
     mToneMappingPass = std::make_unique<ToneMappingPass>(mBloomPass->GetOutput(0), mDeferredRenderer->GetHDRImages(), mSampler);
+    mFXAAPass = std::make_unique<FXAAPass>(mToneMappingPass->GetOutput(0));
 }
 
 void Renderer3D::BeginScene(const Camera& camera) {
@@ -53,8 +54,11 @@ void Renderer3D::EndScene(RenderContext& context) {
     };
     GraphicsCommands::BeginDraw();
     mDeferredRenderer->Render(context, mRenderQueue, mCamera, mDirectionalLights, mPointLights);
+    GraphicsCommands::BeginLabel("Post Processing", {1.f, 0.5f, 0.75f, 1.f});
     mBloomPass->Execute(postProcessContext);
     mToneMappingPass->Execute(postProcessContext);
+    mFXAAPass->Execute(postProcessContext);
+    GraphicsCommands::EndLabel();
     GraphicsCommands::EndDraw();
     mCamera = nullptr;
 }

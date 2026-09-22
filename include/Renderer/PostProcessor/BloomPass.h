@@ -6,6 +6,9 @@ namespace SUN{
     class BloomPass : public PostProcessPass {
     public:
         BloomPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& brightnessImages, vk::raii::Sampler& sampler);
+        ~BloomPass() override {
+            CleanupImages();
+        }
 
         void Execute(const PostProcessContext& context) override;
         void Resize(vk::Extent2D newSize) override;

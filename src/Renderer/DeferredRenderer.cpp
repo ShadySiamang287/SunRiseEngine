@@ -156,7 +156,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     GraphicsCommands::BeginLabel("Lighting pass", {0.76F, 0.32F, .32F, 1.F});
     std::array<vk::ImageMemoryBarrier2, 2> barriers {
         GraphicsCommands::MakeImageBarrier(
-            mBrightnessImages[context.frameIndex].image.image,
+            mHDRImages[context.frameIndex].image.image,
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::ImageLayout::eColorAttachmentOptimal,
 
@@ -247,43 +247,6 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     };
     GraphicsCommands::ImageBarriers(postBarriers);
     GraphicsCommands::EndLabel();
-    // GraphicsCommands::WriteBloomDescriptorSets(mBloomHorizontalDescriptors, mImageSampler, true);
-    // GraphicsCommands::WriteBloomDescriptorSets(mBloomVerticalDescriptors, mImageSampler, false);
-    // GraphicsCommands::BeginBloom();
-    // GraphicsCommands::BindPipeline(mBloomPipeline);
-    // GraphicsCommands::PushBloomConstants(mBloomLayout, true);
-    // GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomHorizontalDescriptors);
-    // GraphicsCommands::Draw(
-    //     3,  // fullscreen triangle
-    //     1,
-    //     0,
-    //     0
-    // );
-    // GraphicsCommands::TransitionBloomDirection();
-    // GraphicsCommands::BindDescriptorSets(mBloomLayout, mBloomVerticalDescriptors);
-    // GraphicsCommands::PushBloomConstants(mBloomLayout, false);
-    // GraphicsCommands::Draw(
-    //     3,  // fullscreen triangle
-    //     1,
-    //     0,
-    //     0
-    // );
-    // GraphicsCommands::EndBloom();
-    //
-    // GraphicsCommands::BeginToneMapping();
-    // //GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  pConstants);
-    //
-    // GraphicsCommands::BindPipeline(mToneMappingPipeline);
-    // GraphicsCommands::BindDescriptorSets(mToneMappingLayout, mToneMappingDescriptors);
-    // GraphicsCommands::Draw(
-    //     3,  // fullscreen triangle
-    //     1,
-    //     0,
-    //     0
-    // );
-    //GraphicsCommands::EndToneMapping();
-    
-    //GraphicsCommands::EndDraw();
 }
 
 std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& DeferredRenderer::GetBrightnessImages() {
