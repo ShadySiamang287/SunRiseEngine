@@ -4,17 +4,19 @@
 #include <unordered_map>
 
 #include "AssetManagement/Asset.h"
+#include "AssetManagement/ModelAsset.h"
 #include "Graphics/Texture2D.h"
 #include "Graphics/vertex.h"
 
 namespace SUN {
-    inline constexpr uint32_t MAX_BINDLESS_TEXTURES = 16;
+    inline constexpr uint32_t MAX_BINDLESS_TEXTURES = 1024;
 
     class AssetManager {
     public:
         AssetManager();
 
         AssetID LoadTexture(const std::filesystem::path& path, bool srgb = true);
+        std::shared_ptr<ModelAsset> LoadModel(const std::filesystem::path& path);
 
         Texture2D* GetTexture(AssetID id);
         const Texture2D* GetTexture(AssetID id) const;
@@ -44,5 +46,6 @@ namespace SUN {
 
         std::unordered_map<AssetID, TextureAsset> mTextures;
         std::unordered_map<std::filesystem::path, AssetID> mTexturePaths;
+        std::unordered_map<std::filesystem::path, std::shared_ptr<ModelAsset>> mModels;
     };
 }

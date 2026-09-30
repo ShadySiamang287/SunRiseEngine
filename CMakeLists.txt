@@ -59,12 +59,19 @@ FetchContent_Declare(
     GIT_TAG master
 )
 
+FetchContent_Declare(
+    fastgltf
+    GIT_REPOSITORY https://github.com/spnda/fastgltf.git
+    GIT_TAG main
+)
+
 FetchContent_MakeAvailable(
     glm
     glfw3
     vma
     EnTT
     stb
+    fastgltf
 )
 
 add_library(SunriseEngine STATIC)
@@ -78,6 +85,7 @@ target_sources(SunriseEngine
     src/Core/TimeManager.cpp
 
     src/AssetManagement/AssetManager.cpp
+    src/AssetManagement/ModelLoader.cpp
 
     src/SceneManagement/BaseScene.cpp
     src/SceneManagement/BindlessTextureTestScene.cpp
@@ -114,6 +122,7 @@ PUBLIC
     Vulkan::Vulkan
     glfw
     GPUOpen::VulkanMemoryAllocator
+    fastgltf::fastgltf
 )
 
 

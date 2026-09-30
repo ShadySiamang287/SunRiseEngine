@@ -36,6 +36,7 @@ namespace SUN{
 
     struct MeshComponent {
         std::shared_ptr<Mesh> mesh;
+        glm::mat4 LocalTransform{1.0f};
     };
 
     struct MaterialComponent {
