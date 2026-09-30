@@ -148,6 +148,8 @@ void Renderer3D::EndScene(
         pushConstants
     );
 
+    GraphicsCommands::BeginLabel("Post Processing", {1.f, 0.5f, 0.75f, 1.f});
+
     mBloomPass->Execute(
         postProcessContext
     );
@@ -160,6 +162,7 @@ void Renderer3D::EndScene(
         postProcessContext
     );
 
+    GraphicsCommands::EndLabel();
     GraphicsCommands::EndDraw();
 
     mCamera = nullptr;
