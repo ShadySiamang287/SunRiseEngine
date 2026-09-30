@@ -202,9 +202,11 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
     return std::move(pipeline);
 }
 
-Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, vk::Format format) {
+Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, bool srgb) {
     auto* context = mInstancePtr->mGraphicsContextPtr;
     
+    vk::Format format = srgb ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Uint;
+
     Texture2D texture;
     texture.mContext = context;
     texture.mFormat = format;
@@ -245,6 +247,10 @@ Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, u
         &stagingAllocation,
         &stagingAllocationInfo
     );
+
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create staging buffer");
+    }
 
     std::memcpy(
         stagingAllocationInfo.pMappedData,
@@ -309,7 +315,7 @@ vk::ImageCreateInfo imageInfo{
 
     context->ImmediateSubmit([&](vk::raii::CommandBuffer& cmd) {
         vk::ImageMemoryBarrier2 toTransfer{
-            .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
+            .srcStageMask = vk::PipelineStageFlagBits2::eNone,
             .srcAccessMask = {},
 
             .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
@@ -408,8 +414,8 @@ vk::ImageCreateInfo imageInfo{
             .layerCount = 1
         }
     };
-    vmaDestroyBuffer(context->mAllocator, stagingBuffer, stagingAllocation);
     texture.mImage.view = vk::raii::ImageView(context->mDevice, viewInfo);
+    vmaDestroyBuffer(context->mAllocator, stagingBuffer, stagingAllocation);
 
     return texture;
 }

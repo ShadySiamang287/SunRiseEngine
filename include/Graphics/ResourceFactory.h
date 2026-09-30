@@ -73,7 +73,7 @@ namespace SUN {
         static vk::raii::PipelineLayout CreatePipelineLayout(vk::ShaderStageFlags flags, uint32_t pushConstantsSize, DescriptorResources* resources = nullptr);
         static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName);
 
-        static Texture2D CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, vk::Format format);
+        static Texture2D CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, bool srgb);
 
         static vk::raii::Sampler CreateSampler(const SamplerConfig& config);
 
