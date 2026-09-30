@@ -601,8 +601,8 @@ void GraphicsContext::DestroyGBuffers() {
 
 void GraphicsContext::CreateDesciptorPool(){
     std::vector<vk::DescriptorPoolSize> poolSizes = {
-        { vk::DescriptorType::eSampledImage, 64 },
-        { vk::DescriptorType::eSampler,      16 }
+        { vk::DescriptorType::eSampledImage, 256 },
+        { vk::DescriptorType::eSampler,      32 }
     };
 
     vk::DescriptorPoolCreateInfo poolInfo {
