@@ -118,35 +118,6 @@ PUBLIC
 
 target_compile_definitions(SunriseEngine PUBLIC VULKAN_HPP_NO_STRUCT_CONSTRUCTORS GLM_FORCE_RADIANS GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
-find_program(SLANGC_EXECUTABLE
-    NAMES slangc
-    HINTS "$ENV{VULKAN_SDK}/Bin"
-)
-
-if(SLANGC_EXECUTABLE)
-    set(SUNRISE_SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
-    file(MAKE_DIRECTORY "${SUNRISE_SHADER_OUTPUT_DIR}")
-
-    add_custom_command(
-        OUTPUT
-            "${SUNRISE_SHADER_OUTPUT_DIR}/vertMain.spv"
-            "${SUNRISE_SHADER_OUTPUT_DIR}/gBufferFrag.spv"
-        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/shaders/BindlessGBuffer.slang"
-            -target spirv -entry vertMain -o "${SUNRISE_SHADER_OUTPUT_DIR}/vertMain.spv"
-        COMMAND "${SLANGC_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/shaders/BindlessGBuffer.slang"
-            -target spirv -entry gBufferFrag -o "${SUNRISE_SHADER_OUTPUT_DIR}/gBufferFrag.spv"
-        DEPENDS "${PROJECT_SOURCE_DIR}/shaders/BindlessGBuffer.slang"
-        VERBATIM
-    )
-
-    add_custom_target(SunriseBindlessShaders
-        DEPENDS
-            "${SUNRISE_SHADER_OUTPUT_DIR}/vertMain.spv"
-            "${SUNRISE_SHADER_OUTPUT_DIR}/gBufferFrag.spv"
-    )
-    add_dependencies(SunriseEngine SunriseBindlessShaders)
-endif()
-
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/assets/textures")
 configure_file(
     "${PROJECT_SOURCE_DIR}/assets/textures/bindless_test_checker.png"
