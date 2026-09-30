@@ -1,15 +1,17 @@
 #pragma once
 
+#include <array>
+
 #include "Graphics/GraphicsConfig.h"
+#include "Graphics/RenderImage.h"
 #include "Renderer/GBuffer.h"
 #include "Renderer/RenderingStructs.h"
 
 namespace SUN {
-    class LightingPass {
+    class SSAOPass {
     public:
-        LightingPass(
+        SSAOPass(
             std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers,
-            std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& aoImages,
             vk::raii::Sampler& sampler
         );
 
@@ -20,22 +22,19 @@ namespace SUN {
 
         void Resize(vk::Extent2D newSize);
 
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetHDRImages();
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetBrightnessImages();
+        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetOutputs();
 
     private:
-        void CreateImages(vk::Extent2D extent);
+        void CreateImages(vk::Extent2D sourceExtent);
         void UpdateDescriptors();
 
         std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& mGBuffers;
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& mAOImages;
+        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mAOImages;
 
         DescriptorResources mDescriptors;
+
         vk::raii::PipelineLayout mLayout = nullptr;
         vk::raii::Pipeline mPipeline = nullptr;
-
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mHDRImages;
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mBrightnessImages;
 
         vk::raii::Sampler& mSampler;
     };

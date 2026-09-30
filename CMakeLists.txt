@@ -102,6 +102,7 @@ target_sources(SunriseEngine
     src/Renderer/RenderFrameData.cpp
     src/Renderer/DeferredRenderer.cpp
     src/Renderer/LightingPass.cpp
+    src/Renderer/SSAOPass.cpp
     src/Renderer/PostProcessor/BloomPass.cpp
     src/Renderer/PostProcessor/ToneMappingPass.cpp
     src/Renderer/PostProcessor/FXAAPass.cpp

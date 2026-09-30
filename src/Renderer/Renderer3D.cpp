@@ -37,9 +37,16 @@ Renderer3D::Renderer3D(
             mAssetManager
         );
 
+    mSSAOPass =
+        std::make_unique<SSAOPass>(
+            mDeferredRenderer->GetGBuffers(),
+            mSampler
+        );
+
     mLightingPass =
         std::make_unique<LightingPass>(
             mDeferredRenderer->GetGBuffers(),
+            mSSAOPass->GetOutputs(),
             mSampler
         );
 
@@ -131,6 +138,11 @@ void Renderer3D::EndScene(
         pushConstants
     );
 
+    mSSAOPass->Execute(
+        context,
+        pushConstants
+    );
+
     mLightingPass->Execute(
         context,
         pushConstants
@@ -157,6 +169,10 @@ void Renderer3D::Resize(
     vk::Extent2D newSize) {
 
     mDeferredRenderer->Resize(
+        newSize
+    );
+
+    mSSAOPass->Resize(
         newSize
     );
 

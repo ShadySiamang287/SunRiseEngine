@@ -7,11 +7,13 @@ using namespace SUN;
 
 LightingPass::LightingPass(
     std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers,
+    std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& aoImages,
     vk::raii::Sampler& sampler)
     : mGBuffers(gBuffers),
+      mAOImages(aoImages),
       mSampler(sampler) {
 
-    std::array<vk::DescriptorSetLayoutBinding, 4>
+    std::array<vk::DescriptorSetLayoutBinding, 5>
         bindings;
 
     bindings[0] = {
@@ -45,6 +47,15 @@ LightingPass::LightingPass(
         .binding = 3,
         .descriptorType =
             vk::DescriptorType::eSampler,
+        .descriptorCount = 1,
+        .stageFlags =
+            vk::ShaderStageFlagBits::eFragment
+    };
+
+    bindings[4] = {
+        .binding = 4,
+        .descriptorType =
+            vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
         .stageFlags =
             vk::ShaderStageFlagBits::eFragment
@@ -309,7 +320,15 @@ void LightingPass::UpdateDescriptors() {
                 vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
-        std::array<vk::WriteDescriptorSet, 4>
+        vk::DescriptorImageInfo aoInfo {
+            .sampler = nullptr,
+            .imageView =
+                *mAOImages[frameIndex].image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
+        };
+
+        std::array<vk::WriteDescriptorSet, 5>
             writes {
                 vk::WriteDescriptorSet {
                     .dstSet =
@@ -350,6 +369,16 @@ void LightingPass::UpdateDescriptors() {
                         vk::DescriptorType::eSampler,
                     .pImageInfo =
                         &samplerInfo
+                },
+                vk::WriteDescriptorSet {
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
+                    .dstBinding = 4,
+                    .descriptorCount = 1,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
+                    .pImageInfo =
+                        &aoInfo
                 }
             };
 
