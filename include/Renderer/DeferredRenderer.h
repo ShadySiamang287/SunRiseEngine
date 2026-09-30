@@ -14,16 +14,25 @@ namespace SUN {
         DeferredRenderer(vk::raii::Sampler& sampler, AssetManager& assetManager);
         ~DeferredRenderer();
 
-        void Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* ca,
+        void Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* cam,
             std::span<const GPUDirectionalLight> directionalLights,
-            std::span<const GPUPointLight> pointLightsm);
+            std::span<const GPUPointLight> pointLights);
 
         void Resize(vk::Extent2D newSize);
 
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetBrightnessImages();
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetHDRImages();
 
-        private:
+    private:
+        PushConstants PrepareFrame(
+            const RenderQueue& renderQueue,
+            const Camera* cam,
+            std::span<const GPUDirectionalLight> directionalLights,
+            std::span<const GPUPointLight> pointLights
+        );
+
+        void RenderGBufferPass(const PushConstants& pushConstants);
+        void RenderLightingPass(RenderContext& context, const PushConstants& pushConstants);
 
         void DestroyImages();
         void CreateImages(vk::Extent2D extent);

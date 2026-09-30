@@ -109,6 +109,29 @@ DeferredRenderer::~DeferredRenderer() {
 void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* cam,
     std::span<const GPUDirectionalLight> directionalLights,
     std::span<const GPUPointLight> pointLights) {
+    const PushConstants pushConstants = PrepareFrame(
+        renderQueue,
+        cam,
+        directionalLights,
+        pointLights
+    );
+
+    RenderGBufferPass(pushConstants);
+
+    GraphicsCommands::WriteLightingDescriptorSets(
+        mLightingDescriptors,
+        mImageSampler
+    );
+
+    RenderLightingPass(context, pushConstants);
+}
+
+PushConstants DeferredRenderer::PrepareFrame(
+    const RenderQueue& renderQueue,
+    const Camera* cam,
+    std::span<const GPUDirectionalLight> directionalLights,
+    std::span<const GPUPointLight> pointLights) {
+
     mFrameData.view = cam->GetViewMatrix();
     mFrameData.inverseView = glm::inverse(mFrameData.view);
     mFrameData.proj = cam->GetProjectionMatrix();
@@ -117,62 +140,105 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     mFrameData.directionalLightCount = directionalLights.size();
     mFrameData.pointLightCount = pointLights.size();
 
-    PushConstants pConstants {
+    PushConstants pushConstants {
         mFrameDataBuffer.GetDeviceAddress(),
         mObjectDataBuffer.GetDeviceAddress(),
         mDirectionalLightDataBuffer.GetDeviceAddress(),
         mPointLightDataBuffer.GetDeviceAddress()
     };
-    mFrameDataBuffer.Upload(&mFrameData, sizeof(FrameData));
-    mDirectionalLightDataBuffer.Upload(directionalLights.data(), sizeof(GPUDirectionalLight) * directionalLights.size());
-    mPointLightDataBuffer.Upload(pointLights.data(), sizeof(GPUPointLight) * pointLights.size());
 
-    BuildBatches(renderQueue);
-    if (!mObjects.empty()) {
-        mObjectDataBuffer.Upload(mObjects.data(), mObjects.size() * sizeof(ObjectData));
+    mFrameDataBuffer.Upload(&mFrameData, sizeof(FrameData));
+
+    if (!directionalLights.empty()) {
+        mDirectionalLightDataBuffer.Upload(
+            directionalLights.data(),
+            sizeof(GPUDirectionalLight) * directionalLights.size()
+        );
     }
 
-    //GraphicsCommands::BeginDraw();
-    GraphicsCommands::WriteLightingDescriptorSets(mLightingDescriptors, mImageSampler);
+    if (!pointLights.empty()) {
+        mPointLightDataBuffer.Upload(
+            pointLights.data(),
+            sizeof(GPUPointLight) * pointLights.size()
+        );
+    }
+
+    BuildBatches(renderQueue);
+
+    if (!mObjects.empty()) {
+        mObjectDataBuffer.Upload(
+            mObjects.data(),
+            mObjects.size() * sizeof(ObjectData)
+        );
+    }
+
+    return pushConstants;
+}
+
+void DeferredRenderer::RenderGBufferPass(const PushConstants& pushConstants) {
     GraphicsCommands::BeginGBufferPass();
 
     GraphicsCommands::SetViewport();
     GraphicsCommands::SetScissor();
 
     GraphicsCommands::BindPipeline(mGbufferPipeline);
-    GraphicsCommands::BindDescriptorSets(mPipelineLayout, mAssetManager.GetTextureDescriptors());
+    GraphicsCommands::BindDescriptorSets(
+        mPipelineLayout,
+        mAssetManager.GetTextureDescriptors()
+    );
 
     GraphicsCommands::SetDepthTestEnable(true);
     GraphicsCommands::SetDepthWriteEnable(true);
 
-    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex,  pConstants);
+    GraphicsCommands::PushConstants(
+        mPipelineLayout,
+        vk::ShaderStageFlagBits::eVertex,
+        pushConstants
+    );
 
-    for(const auto& batch : mBatches) {
+    for (const auto& batch : mBatches) {
         GraphicsCommands::BindGeometryBuffer(batch.mesh->buffer);
-        GraphicsCommands::DrawIndexed(batch.mesh->buffer.GetIndexCount(), batch.instanceCount, 0, 0, batch.firstInstance);
+        GraphicsCommands::DrawIndexed(
+            batch.mesh->buffer.GetIndexCount(),
+            batch.instanceCount,
+            0,
+            0,
+            batch.firstInstance
+        );
     }
 
     GraphicsCommands::EndGBufferPass();
+}
 
-    GraphicsCommands::BeginLabel("Lighting pass", {0.76F, 0.32F, .32F, 1.F});
+void DeferredRenderer::RenderLightingPass(
+    RenderContext& context,
+    const PushConstants& pushConstants) {
+
+    GraphicsCommands::BeginLabel(
+        "Lighting pass",
+        {0.76F, 0.32F, .32F, 1.F}
+    );
+
+    const uint32_t frameIndex = context.frameIndex;
+
     std::array<vk::ImageMemoryBarrier2, 2> barriers {
         GraphicsCommands::MakeImageBarrier(
-            mHDRImages[context.frameIndex].image.image,
+            mHDRImages[frameIndex].image.image,
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::ImageLayout::eColorAttachmentOptimal,
 
-            {}, // src access
+            {},
             vk::AccessFlagBits2::eColorAttachmentWrite,
 
             vk::PipelineStageFlagBits2::eNone,
             vk::PipelineStageFlagBits2::eColorAttachmentOutput
         ),
         GraphicsCommands::MakeImageBarrier(
-            mBrightnessImages[context.frameIndex].image.image,
+            mBrightnessImages[frameIndex].image.image,
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::ImageLayout::eColorAttachmentOptimal,
 
-            {}, // src access
+            {},
             vk::AccessFlagBits2::eColorAttachmentWrite,
 
             vk::PipelineStageFlagBits2::eNone,
@@ -183,7 +249,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     GraphicsCommands::ImageBarriers(barriers);
 
     vk::RenderingAttachmentInfo brightAttachment {
-        .imageView = mBrightnessImages[context.frameIndex].image.view,
+        .imageView = mBrightnessImages[frameIndex].image.view,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
@@ -192,8 +258,8 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
         }
     };
 
-    vk::RenderingAttachmentInfo hdrAttachment{
-        .imageView = mHDRImages[context.frameIndex].image.view,
+    vk::RenderingAttachmentInfo hdrAttachment {
+        .imageView = mHDRImages[frameIndex].image.view,
         .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
@@ -207,35 +273,45 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
         brightAttachment
     };
 
-    vk::RenderingInfo renderingInfo{
+    vk::RenderingInfo renderingInfo {
         .renderArea = {
             .offset = {0, 0},
             .extent = GraphicsCommands::GetSwapchainExtent()
         },
-        .layerCount = 1,          // Required when viewMask == 0
-        .colorAttachmentCount = 2,
+        .layerCount = 1,
+        .colorAttachmentCount = static_cast<uint32_t>(attachments.size()),
         .pColorAttachments = attachments.data(),
     };
+
     GraphicsCommands::BeginRendering(renderingInfo);
 
-    GraphicsCommands::PushConstants(mLightingLayout, vk::ShaderStageFlagBits::eFragment,  pConstants);
+    GraphicsCommands::PushConstants(
+        mLightingLayout,
+        vk::ShaderStageFlagBits::eFragment,
+        pushConstants
+    );
 
     GraphicsCommands::SetDepthTestEnable(false);
     GraphicsCommands::SetDepthWriteEnable(false);
 
     GraphicsCommands::BindPipeline(mLightingPipeline);
-    GraphicsCommands::BindDescriptorSets(mLightingLayout, mLightingDescriptors);
+    GraphicsCommands::BindDescriptorSets(
+        mLightingLayout,
+        mLightingDescriptors
+    );
+
     GraphicsCommands::Draw(
-        3,  // fullscreen triangle
+        3,
         1,
         0,
         0
     );
 
     GraphicsCommands::EndRendering();
+
     std::array<vk::ImageMemoryBarrier2, 1> postBarriers {
         GraphicsCommands::MakeImageBarrier(
-            mBrightnessImages[context.frameIndex].image.image,
+            mBrightnessImages[frameIndex].image.image,
             vk::ImageLayout::eColorAttachmentOptimal,
             vk::ImageLayout::eShaderReadOnlyOptimal,
 
@@ -246,6 +322,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
             vk::PipelineStageFlagBits2::eFragmentShader
         )
     };
+
     GraphicsCommands::ImageBarriers(postBarriers);
     GraphicsCommands::EndLabel();
 }
