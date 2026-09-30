@@ -7,8 +7,9 @@
 #include <span>
 
 #include "Graphics/vertex.h"
+#include "Graphics/GraphicsConfig.h"
+#include "Graphics/RenderImage.h"
 
-#include "Renderer/PostProcessor/PostProcessorPass.h"
 
 #include "Graphics/Texture2D.h"
 

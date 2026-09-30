@@ -522,11 +522,19 @@ vk::raii::Sampler ResourceFactory::CreateSampler(const SamplerConfig& config) {
     );
 }
 
-RenderImage ResourceFactory::CreateRenderImage(vk::Format format, vk::Extent2D extent, vk::ImageLayout layout, vk::ImageUsageFlags usageFlags, vk::ImageAspectFlags aspectFlags){
-    RenderImage tempRenderImage;
-    tempRenderImage.format = format;
-    tempRenderImage.extent = extent;
-    tempRenderImage.layout = layout;
+RenderImage ResourceFactory::CreateRenderImage(
+    vk::Format format,
+    vk::Extent2D extent,
+    vk::ImageLayout initialLayout,
+    vk::ImageUsageFlags usageFlags,
+    vk::ImageAspectFlags aspectFlags) {
+
+    RenderImage image;
+    image.format = format;
+    image.extent = extent;
+    image.layout = vk::ImageLayout::eUndefined;
+    image.aspect = aspectFlags;
+    image.mAllocator = mInstancePtr->mGraphicsContextPtr->mAllocator;
 
     const vk::ImageCreateInfo createInfo {
         .sType = vk::StructureType::eImageCreateInfo,
@@ -544,45 +552,25 @@ RenderImage ResourceFactory::CreateRenderImage(vk::Format format, vk::Extent2D e
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
     };
 
-    VkImage tempImage;
-    vmaCreateImage(mInstancePtr->mGraphicsContextPtr->mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&createInfo), &allocInfo, &tempImage, &tempRenderImage.image.allocation, nullptr);
-    tempRenderImage.image.image = tempImage;
+    VkImage rawImage = VK_NULL_HANDLE;
 
-    if (layout != vk::ImageLayout::eUndefined) {
-        vk::AccessFlags2 dstAccess{};
-        vk::PipelineStageFlags2 dstStage = vk::PipelineStageFlagBits2::eTopOfPipe;
+    const VkResult result = vmaCreateImage(
+        image.mAllocator,
+        reinterpret_cast<const VkImageCreateInfo*>(&createInfo),
+        &allocInfo,
+        &rawImage,
+        &image.image.allocation,
+        nullptr
+    );
 
-        switch (layout) {
-            case vk::ImageLayout::eShaderReadOnlyOptimal:
-                dstAccess = vk::AccessFlagBits2::eShaderRead;
-                dstStage = vk::PipelineStageFlagBits2::eFragmentShader;
-                break;
-            case vk::ImageLayout::eColorAttachmentOptimal:
-                dstAccess = vk::AccessFlagBits2::eColorAttachmentWrite;
-                dstStage = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
-                break;
-            case vk::ImageLayout::eDepthAttachmentOptimal:
-                dstAccess = vk::AccessFlagBits2::eDepthStencilAttachmentWrite;
-                dstStage = vk::PipelineStageFlagBits2::eEarlyFragmentTests |
-                           vk::PipelineStageFlagBits2::eLateFragmentTests;
-                break;
-            default:
-                break;
-        }
-
-        mInstancePtr->mGraphicsContextPtr->TransitionImageLayoutImmediate(
-            tempRenderImage.image.image,
-            vk::ImageLayout::eUndefined,
-            layout,
-            {},
-            dstAccess,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            dstStage,
-            aspectFlags
-        );
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create render image");
     }
+
+    image.image.image = rawImage;
+
     vk::ImageViewCreateInfo imageView {
-        .image = tempRenderImage.image.image,
+        .image = image.image.image,
         .viewType = vk::ImageViewType::e2D,
         .format = format,
         .subresourceRange = {
@@ -593,8 +581,59 @@ RenderImage ResourceFactory::CreateRenderImage(vk::Format format, vk::Extent2D e
             .layerCount = 1
         }
     };
-    tempRenderImage.image.view = vk::raii::ImageView(mInstancePtr->mGraphicsContextPtr->mDevice, imageView);
-    return std::move(tempRenderImage);
+
+    image.image.view = vk::raii::ImageView(
+        mInstancePtr->mGraphicsContextPtr->mDevice,
+        imageView
+    );
+
+    if (initialLayout != vk::ImageLayout::eUndefined) {
+        vk::AccessFlags2 initialAccess{};
+        vk::PipelineStageFlags2 initialStage =
+            vk::PipelineStageFlagBits2::eNone;
+
+        switch (initialLayout) {
+            case vk::ImageLayout::eShaderReadOnlyOptimal:
+                initialAccess = vk::AccessFlagBits2::eShaderRead;
+                initialStage = vk::PipelineStageFlagBits2::eFragmentShader;
+                break;
+
+            case vk::ImageLayout::eColorAttachmentOptimal:
+                initialAccess = vk::AccessFlagBits2::eColorAttachmentWrite;
+                initialStage =
+                    vk::PipelineStageFlagBits2::eColorAttachmentOutput;
+                break;
+
+            case vk::ImageLayout::eDepthAttachmentOptimal:
+                initialAccess =
+                    vk::AccessFlagBits2::eDepthStencilAttachmentWrite;
+                initialStage =
+                    vk::PipelineStageFlagBits2::eEarlyFragmentTests |
+                    vk::PipelineStageFlagBits2::eLateFragmentTests;
+                break;
+
+            default:
+                initialStage = vk::PipelineStageFlagBits2::eAllCommands;
+                break;
+        }
+
+        mInstancePtr->mGraphicsContextPtr->TransitionImageLayoutImmediate(
+            image.image.image,
+            vk::ImageLayout::eUndefined,
+            initialLayout,
+            {},
+            initialAccess,
+            vk::PipelineStageFlagBits2::eNone,
+            initialStage,
+            aspectFlags
+        );
+
+        image.layout = initialLayout;
+        image.access = initialAccess;
+        image.stage = initialStage;
+    }
+
+    return image;
 }
 
 ResourceFactory* ResourceFactory::mInstancePtr = nullptr;

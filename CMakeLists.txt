@@ -91,6 +91,7 @@ target_sources(SunriseEngine
     src/SceneManagement/Systems/RenderSystem.cpp
 
     src/Graphics/GraphicsContext.cpp
+    src/Graphics/RenderImage.cpp
     src/Graphics/ResourceFactory.cpp
     src/Graphics/ShaderCache.cpp
     src/Graphics/GraphicsCommands.cpp
@@ -98,6 +99,7 @@ target_sources(SunriseEngine
     src/Graphics/Texture2D.cpp
 
     src/Renderer/Renderer3D.cpp
+    src/Renderer/RenderFrameData.cpp
     src/Renderer/DeferredRenderer.cpp
     src/Renderer/LightingPass.cpp
     src/Renderer/PostProcessor/BloomPass.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Graphics/GraphicsConfig.h"
 #include "Renderer/GBuffer.h"
 #include "Renderer/RenderingStructs.h"
 
@@ -10,7 +11,6 @@ namespace SUN {
             std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers,
             vk::raii::Sampler& sampler
         );
-        ~LightingPass();
 
         void Execute(
             const RenderContext& context,
@@ -24,7 +24,7 @@ namespace SUN {
 
     private:
         void CreateImages(vk::Extent2D extent);
-        void DestroyImages();
+        void UpdateDescriptors();
 
         std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& mGBuffers;
 

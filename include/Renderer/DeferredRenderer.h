@@ -1,10 +1,11 @@
 #pragma once
 
+#include <span>
+
+#include "Graphics/GraphicsConfig.h"
 #include "Renderer/GBuffer.h"
 #include "Renderer/RenderingStructs.h"
 #include "Renderer/RenderQueue.h"
-
-#include <span>
 
 namespace SUN {
     class AssetManager;
@@ -12,14 +13,8 @@ namespace SUN {
     class DeferredRenderer {
     public:
         explicit DeferredRenderer(AssetManager& assetManager);
-        ~DeferredRenderer();
 
-        PushConstants PrepareFrame(
-            const RenderQueue& renderQueue,
-            const Camera* cam,
-            std::span<const GPUDirectionalLight> directionalLights,
-            std::span<const GPUPointLight> pointLights
-        );
+        void Prepare(const RenderQueue& renderQueue);
 
         void Execute(
             const RenderContext& context,
@@ -29,10 +24,10 @@ namespace SUN {
         void Resize(vk::Extent2D newSize);
 
         std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& GetGBuffers();
+        std::span<const ObjectData> GetObjects() const;
 
     private:
         void CreateGBuffers(vk::Extent2D extent);
-        void DestroyGBuffers();
         void BuildBatches(const RenderQueue& renderQueue);
 
         vk::raii::Pipeline mPipeline = nullptr;
@@ -42,15 +37,8 @@ namespace SUN {
 
         AssetManager& mAssetManager;
 
-        ShaderBuffer mFrameDataBuffer;
-        ShaderBuffer mObjectDataBuffer;
-        ShaderBuffer mDirectionalLightDataBuffer;
-        ShaderBuffer mPointLightDataBuffer;
-
         std::vector<uint32_t> mSortOrder;
         std::vector<ObjectData> mObjects;
         std::vector<DrawBatch> mBatches;
-
-        FrameData mFrameData;
     };
 }

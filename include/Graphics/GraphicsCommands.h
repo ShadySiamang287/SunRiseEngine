@@ -1,13 +1,21 @@
 #pragma once
-#include <vulkan/vulkan_raii.hpp>
+
 #include <span>
+#include <vulkan/vulkan_raii.hpp>
 
 #include "Graphics/Buffers.h"
+#include "Graphics/RenderImage.h"
 #include "Graphics/vertex.h"
-#include "Renderer/PostProcessor/PostProcessorPass.h"
 
 namespace SUN {
     class GraphicsContext;
+
+    struct ImageTransition {
+        RenderImage* image;
+        vk::ImageLayout newLayout;
+        vk::AccessFlags2 newAccess;
+        vk::PipelineStageFlags2 newStage;
+    };
 
     class GraphicsCommands {
     public:
@@ -17,62 +25,102 @@ namespace SUN {
         static void EndFrame();
 
         static void BeginDraw();
-        static void DrawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance);
-        static void Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
+        static void DrawIndexed(
+            int indexCount,
+            int instanceCount,
+            int firstIndex,
+            int vertexOffset,
+            int firstInstance
+        );
+        static void Draw(
+            int vertexCount,
+            int instanceCount,
+            int firstVertex,
+            int firstInstance
+        );
         static void DrawFullScreenTriangle();
         static void EndDraw();
 
-        static void PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal);
+        static void PushBloomConstants(
+            vk::raii::PipelineLayout& layout,
+            bool horizontal
+        );
 
         static void BeginRendering(vk::RenderingInfo& info);
         static void EndRendering();
 
-        static void BeginLabel(std::string labelName, std::array<float, 4> colours);
+        static void BeginLabel(
+            std::string labelName,
+            std::array<float, 4> colours
+        );
         static void EndLabel();
 
         static void BindPipeline(vk::raii::Pipeline& pipeline);
         static void BindGeometryBuffer(const GeometryBuffer& buffer);
-        static void BindDescriptorSets(vk::raii::PipelineLayout& layout, const DescriptorResources& resources);
-        static void PushConstants(vk::raii::PipelineLayout& layout, vk::ShaderStageFlags flags, const PushConstants& constants);
+        static void BindDescriptorSets(
+            vk::raii::PipelineLayout& layout,
+            const DescriptorResources& resources
+        );
+        static void PushConstants(
+            vk::raii::PipelineLayout& layout,
+            vk::ShaderStageFlags flags,
+            const PushConstants& constants
+        );
 
-        static void SetViewport();
-        static void SetScissor();
+        static void SetViewportAndScissor(vk::Extent2D extent);
         static void SetDepthTestEnable(bool state);
         static void SetDepthWriteEnable(bool state);
 
-        static void WriteDescriptors(const std::span<vk::WriteDescriptorSet> writes);
+        static void WriteDescriptors(
+            std::span<const vk::WriteDescriptorSet> writes
+        );
 
         static vk::Format GetSwapchainFormat();
         static vk::Extent2D GetSwapchainExtent();
         static vk::Image& GetCurrentSwapchainImage();
         static vk::raii::ImageView& GetCurrentSwapchainImageView();
 
-        static void DestroyRenderImage(RenderImage& image);
+        static void TransitionImage(
+            RenderImage& image,
+            vk::ImageLayout newLayout,
+            vk::AccessFlags2 newAccess,
+            vk::PipelineStageFlags2 newStage
+        );
 
-        static void TransitionImageLayout(	    
-            vk::Image               image,
-            vk::ImageLayout         old_layout,
-            vk::ImageLayout         new_layout,
-            vk::AccessFlags2        src_access_mask,
-            vk::AccessFlags2        dst_access_mask,
-            vk::PipelineStageFlags2 src_stage_mask,
-            vk::PipelineStageFlags2 dst_stage_mask,
-            vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor
+        static void TransitionImages(
+            std::span<const ImageTransition> transitions
+        );
+
+        // Raw image transition for resources not represented by RenderImage,
+        // such as swapchain images.
+        static void TransitionImageLayout(
+            vk::Image image,
+            vk::ImageLayout oldLayout,
+            vk::ImageLayout newLayout,
+            vk::AccessFlags2 srcAccess,
+            vk::AccessFlags2 dstAccess,
+            vk::PipelineStageFlags2 srcStage,
+            vk::PipelineStageFlags2 dstStage,
+            vk::ImageAspectFlags aspectMask =
+                vk::ImageAspectFlagBits::eColor
         );
 
         static vk::ImageMemoryBarrier2 MakeImageBarrier(
-                vk::Image image,
-                vk::ImageLayout oldLayout,
-                vk::ImageLayout newLayout,
-                vk::AccessFlags2 srcAccess,
-                vk::AccessFlags2 dstAccess,
-                vk::PipelineStageFlags2 srcStage,
-                vk::PipelineStageFlags2 dstStage,
-                vk::ImageAspectFlags aspect = vk::ImageAspectFlagBits::eColor); 
+            vk::Image image,
+            vk::ImageLayout oldLayout,
+            vk::ImageLayout newLayout,
+            vk::AccessFlags2 srcAccess,
+            vk::AccessFlags2 dstAccess,
+            vk::PipelineStageFlags2 srcStage,
+            vk::PipelineStageFlags2 dstStage,
+            vk::ImageAspectFlags aspect =
+                vk::ImageAspectFlagBits::eColor
+        );
 
-        static void ImageBarriers(std::span<const vk::ImageMemoryBarrier2> barriers);
+        static void ImageBarriers(
+            std::span<const vk::ImageMemoryBarrier2> barriers
+        );
 
-    public:
         static GraphicsContext* mContextPtr;
     };
 }

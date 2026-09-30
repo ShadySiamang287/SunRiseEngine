@@ -1,10 +1,8 @@
 #include "Renderer/DeferredRenderer.h"
 
+#include "AssetManagement/AssetManager.h"
 #include "Graphics/GraphicsCommands.h"
 #include "Graphics/ResourceFactory.h"
-#include "Graphics/vertex.h"
-#include "AssetManagement/AssetManager.h"
-
 #include "Logger.h"
 
 #include <algorithm>
@@ -21,7 +19,7 @@ DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
         &mAssetManager.GetTextureDescriptors()
     );
 
-    PipelineConfig gBufferConfig = {
+    PipelineConfig gBufferConfig {
         .vertexFile = "./shaders/vertMain.spv",
         .vertexName = "vertMain",
         .fragFile = "./shaders/gBufferFrag.spv",
@@ -45,158 +43,111 @@ DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
         "GBuffer pipeline"
     );
 
-    mFrameDataBuffer.Init(sizeof(FrameData));
-    mObjectDataBuffer.Init(sizeof(ObjectData) * MAX_OBJECTS, true);
-    mDirectionalLightDataBuffer.Init(
-        sizeof(GPUDirectionalLight) * MAX_DIRECTIONAL_LIGHTS,
-        true
-    );
-    mPointLightDataBuffer.Init(
-        sizeof(GPUPointLight) * MAX_POINT_LIGHTS,
-        true
-    );
-
     mSortOrder.reserve(MAX_OBJECTS);
     mObjects.reserve(MAX_OBJECTS);
     mBatches.reserve(256);
 
-    CreateGBuffers(GraphicsCommands::GetSwapchainExtent());
+    CreateGBuffers(
+        GraphicsCommands::GetSwapchainExtent()
+    );
 }
 
-DeferredRenderer::~DeferredRenderer() {
-    DestroyGBuffers();
-}
-
-PushConstants DeferredRenderer::PrepareFrame(
-    const RenderQueue& renderQueue,
-    const Camera* cam,
-    std::span<const GPUDirectionalLight> directionalLights,
-    std::span<const GPUPointLight> pointLights) {
-
-    mFrameData.view = cam->GetViewMatrix();
-    mFrameData.inverseView = glm::inverse(mFrameData.view);
-    mFrameData.proj = cam->GetProjectionMatrix();
-    mFrameData.inverseProjection = glm::inverse(mFrameData.proj);
-    mFrameData.cameraPosition = {cam->Position, 1.f};
-    mFrameData.directionalLightCount =
-        static_cast<uint32_t>(directionalLights.size());
-    mFrameData.pointLightCount =
-        static_cast<uint32_t>(pointLights.size());
-
-    PushConstants pushConstants {
-        mFrameDataBuffer.GetDeviceAddress(),
-        mObjectDataBuffer.GetDeviceAddress(),
-        mDirectionalLightDataBuffer.GetDeviceAddress(),
-        mPointLightDataBuffer.GetDeviceAddress()
-    };
-
-    mFrameDataBuffer.Upload(&mFrameData, sizeof(FrameData));
-
-    if (!directionalLights.empty()) {
-        mDirectionalLightDataBuffer.Upload(
-            directionalLights.data(),
-            sizeof(GPUDirectionalLight) * directionalLights.size()
-        );
-    }
-
-    if (!pointLights.empty()) {
-        mPointLightDataBuffer.Upload(
-            pointLights.data(),
-            sizeof(GPUPointLight) * pointLights.size()
-        );
-    }
+void DeferredRenderer::Prepare(
+    const RenderQueue& renderQueue) {
 
     BuildBatches(renderQueue);
-
-    if (!mObjects.empty()) {
-        mObjectDataBuffer.Upload(
-            mObjects.data(),
-            mObjects.size() * sizeof(ObjectData)
-        );
-    }
-
-    return pushConstants;
 }
 
 void DeferredRenderer::Execute(
     const RenderContext& context,
     const PushConstants& pushConstants) {
 
-    GBuffer& gbuffer = mGBuffers[context.frameIndex];
+    GBuffer& gbuffer =
+        mGBuffers[context.frameIndex];
 
     GraphicsCommands::BeginLabel(
         "GBuffer pass",
         {0.5F, 0.76F, 0.32F, 1.F}
     );
 
-    std::array<vk::ImageMemoryBarrier2, 3> beginBarriers {
-        GraphicsCommands::MakeImageBarrier(
-            gbuffer.albedo.image.image,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::AccessFlagBits2::eShaderRead,
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::PipelineStageFlagBits2::eFragmentShader,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput
-        ),
-        GraphicsCommands::MakeImageBarrier(
-            gbuffer.normal.image.image,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::AccessFlagBits2::eShaderRead,
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::PipelineStageFlagBits2::eFragmentShader,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput
-        ),
-        GraphicsCommands::MakeImageBarrier(
-            gbuffer.depth.image.image,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageLayout::eDepthAttachmentOptimal,
-            vk::AccessFlagBits2::eShaderRead,
-            vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-            vk::PipelineStageFlagBits2::eFragmentShader,
-            vk::PipelineStageFlagBits2::eEarlyFragmentTests |
-                vk::PipelineStageFlagBits2::eLateFragmentTests,
-            vk::ImageAspectFlagBits::eDepth
-        )
-    };
+    const std::array<ImageTransition, 3>
+        beginTransitions {
+            ImageTransition {
+                &gbuffer.albedo,
+                vk::ImageLayout::eColorAttachmentOptimal,
+                vk::AccessFlagBits2::eColorAttachmentWrite,
+                vk::PipelineStageFlagBits2::eColorAttachmentOutput
+            },
+            ImageTransition {
+                &gbuffer.normal,
+                vk::ImageLayout::eColorAttachmentOptimal,
+                vk::AccessFlagBits2::eColorAttachmentWrite,
+                vk::PipelineStageFlagBits2::eColorAttachmentOutput
+            },
+            ImageTransition {
+                &gbuffer.depth,
+                vk::ImageLayout::eDepthAttachmentOptimal,
+                vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+                vk::PipelineStageFlagBits2::eEarlyFragmentTests |
+                    vk::PipelineStageFlagBits2::eLateFragmentTests
+            }
+        };
 
-    GraphicsCommands::ImageBarriers(beginBarriers);
+    GraphicsCommands::TransitionImages(
+        beginTransitions
+    );
 
     vk::RenderingAttachmentInfo albedoAttachment {
         .imageView = gbuffer.albedo.image.view,
-        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .imageLayout =
+            vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue{
-            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        .clearValue = vk::ClearValue {
+            vk::ClearColorValue {
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            }
         }
     };
 
     vk::RenderingAttachmentInfo normalAttachment {
         .imageView = gbuffer.normal.image.view,
-        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .imageLayout =
+            vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue{
-            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        .clearValue = vk::ClearValue {
+            vk::ClearColorValue {
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            }
         }
     };
 
     vk::RenderingAttachmentInfo depthAttachment {
         .imageView = gbuffer.depth.image.view,
-        .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+        .imageLayout =
+            vk::ImageLayout::eDepthAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue{
-            vk::ClearDepthStencilValue{1.0f, 0}
+        .clearValue = vk::ClearValue {
+            vk::ClearDepthStencilValue {
+                1.0f,
+                0
+            }
         }
     };
 
-    std::array<vk::RenderingAttachmentInfo, 2> colorAttachments {
-        albedoAttachment,
-        normalAttachment
-    };
+    std::array<vk::RenderingAttachmentInfo, 2>
+        colorAttachments {
+            albedoAttachment,
+            normalAttachment
+        };
 
     vk::RenderingInfo renderingInfo {
         .renderArea = {
@@ -205,17 +156,27 @@ void DeferredRenderer::Execute(
         },
         .layerCount = 1,
         .colorAttachmentCount =
-            static_cast<uint32_t>(colorAttachments.size()),
-        .pColorAttachments = colorAttachments.data(),
-        .pDepthAttachment = &depthAttachment
+            static_cast<uint32_t>(
+                colorAttachments.size()
+            ),
+        .pColorAttachments =
+            colorAttachments.data(),
+        .pDepthAttachment =
+            &depthAttachment
     };
 
-    GraphicsCommands::BeginRendering(renderingInfo);
+    GraphicsCommands::BeginRendering(
+        renderingInfo
+    );
 
-    GraphicsCommands::SetViewport();
-    GraphicsCommands::SetScissor();
+    GraphicsCommands::SetViewportAndScissor(
+        gbuffer.albedo.extent
+    );
 
-    GraphicsCommands::BindPipeline(mPipeline);
+    GraphicsCommands::BindPipeline(
+        mPipeline
+    );
+
     GraphicsCommands::BindDescriptorSets(
         mPipelineLayout,
         mAssetManager.GetTextureDescriptors()
@@ -231,7 +192,10 @@ void DeferredRenderer::Execute(
     );
 
     for (const auto& batch : mBatches) {
-        GraphicsCommands::BindGeometryBuffer(batch.mesh->buffer);
+        GraphicsCommands::BindGeometryBuffer(
+            batch.mesh->buffer
+        );
+
         GraphicsCommands::DrawIndexed(
             batch.mesh->buffer.GetIndexCount(),
             batch.instanceCount,
@@ -243,92 +207,93 @@ void DeferredRenderer::Execute(
 
     GraphicsCommands::EndRendering();
 
-    std::array<vk::ImageMemoryBarrier2, 3> endBarriers {
-        GraphicsCommands::MakeImageBarrier(
-            gbuffer.albedo.image.image,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        ),
-        GraphicsCommands::MakeImageBarrier(
-            gbuffer.normal.image.image,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        ),
-        GraphicsCommands::MakeImageBarrier(
-            gbuffer.depth.image.image,
-            vk::ImageLayout::eDepthAttachmentOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eEarlyFragmentTests |
-                vk::PipelineStageFlagBits2::eLateFragmentTests,
-            vk::PipelineStageFlagBits2::eFragmentShader,
-            vk::ImageAspectFlagBits::eDepth
-        )
-    };
+    const std::array<ImageTransition, 3>
+        endTransitions {
+            ImageTransition {
+                &gbuffer.albedo,
+                vk::ImageLayout::eShaderReadOnlyOptimal,
+                vk::AccessFlagBits2::eShaderRead,
+                vk::PipelineStageFlagBits2::eFragmentShader
+            },
+            ImageTransition {
+                &gbuffer.normal,
+                vk::ImageLayout::eShaderReadOnlyOptimal,
+                vk::AccessFlagBits2::eShaderRead,
+                vk::PipelineStageFlagBits2::eFragmentShader
+            },
+            ImageTransition {
+                &gbuffer.depth,
+                vk::ImageLayout::eShaderReadOnlyOptimal,
+                vk::AccessFlagBits2::eShaderRead,
+                vk::PipelineStageFlagBits2::eFragmentShader
+            }
+        };
 
-    GraphicsCommands::ImageBarriers(endBarriers);
+    GraphicsCommands::TransitionImages(
+        endTransitions
+    );
+
     GraphicsCommands::EndLabel();
 }
 
-void DeferredRenderer::Resize(vk::Extent2D newSize) {
-    DestroyGBuffers();
+void DeferredRenderer::Resize(
+    vk::Extent2D newSize) {
+
     CreateGBuffers(newSize);
 }
 
-std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& DeferredRenderer::GetGBuffers() {
+std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>&
+DeferredRenderer::GetGBuffers() {
     return mGBuffers;
 }
 
-void DeferredRenderer::CreateGBuffers(vk::Extent2D extent) {
+std::span<const ObjectData>
+DeferredRenderer::GetObjects() const {
+    return mObjects;
+}
+
+void DeferredRenderer::CreateGBuffers(
+    vk::Extent2D extent) {
+
     for (auto& gbuffer : mGBuffers) {
-        gbuffer.albedo = ResourceFactory::CreateRenderImage(
-            vk::Format::eR16G16B16A16Sfloat,
-            extent,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageUsageFlagBits::eColorAttachment |
-                vk::ImageUsageFlagBits::eSampled,
-            vk::ImageAspectFlagBits::eColor
-        );
+        gbuffer.albedo =
+            ResourceFactory::CreateRenderImage(
+                vk::Format::eR16G16B16A16Sfloat,
+                extent,
+                vk::ImageLayout::eUndefined,
+                vk::ImageUsageFlagBits::eColorAttachment |
+                    vk::ImageUsageFlagBits::eSampled,
+                vk::ImageAspectFlagBits::eColor
+            );
 
-        gbuffer.normal = ResourceFactory::CreateRenderImage(
-            vk::Format::eR16G16B16A16Sfloat,
-            extent,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageUsageFlagBits::eColorAttachment |
-                vk::ImageUsageFlagBits::eSampled,
-            vk::ImageAspectFlagBits::eColor
-        );
+        gbuffer.normal =
+            ResourceFactory::CreateRenderImage(
+                vk::Format::eR16G16B16A16Sfloat,
+                extent,
+                vk::ImageLayout::eUndefined,
+                vk::ImageUsageFlagBits::eColorAttachment |
+                    vk::ImageUsageFlagBits::eSampled,
+                vk::ImageAspectFlagBits::eColor
+            );
 
-        gbuffer.depth = ResourceFactory::CreateRenderImage(
-            vk::Format::eD32Sfloat,
-            extent,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageUsageFlagBits::eDepthStencilAttachment |
-                vk::ImageUsageFlagBits::eSampled,
-            vk::ImageAspectFlagBits::eDepth
-        );
+        gbuffer.depth =
+            ResourceFactory::CreateRenderImage(
+                vk::Format::eD32Sfloat,
+                extent,
+                vk::ImageLayout::eUndefined,
+                vk::ImageUsageFlagBits::eDepthStencilAttachment |
+                    vk::ImageUsageFlagBits::eSampled,
+                vk::ImageAspectFlagBits::eDepth
+            );
     }
 }
 
-void DeferredRenderer::DestroyGBuffers() {
-    for (auto& gbuffer : mGBuffers) {
-        GraphicsCommands::DestroyRenderImage(gbuffer.albedo);
-        GraphicsCommands::DestroyRenderImage(gbuffer.normal);
-        GraphicsCommands::DestroyRenderImage(gbuffer.depth);
-    }
-}
+void DeferredRenderer::BuildBatches(
+    const RenderQueue& renderQueue) {
 
-void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
-    const auto& commands = renderQueue.GetCommands();
+    const auto& commands =
+        renderQueue.GetCommands();
+
     size_t count = commands.size();
 
     if (count > MAX_OBJECTS) {
@@ -338,11 +303,17 @@ void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
             count,
             MAX_OBJECTS
         );
+
         count = MAX_OBJECTS;
     }
 
     mSortOrder.resize(count);
-    std::iota(mSortOrder.begin(), mSortOrder.end(), 0u);
+
+    std::iota(
+        mSortOrder.begin(),
+        mSortOrder.end(),
+        0u
+    );
 
     std::ranges::sort(
         mSortOrder,
@@ -356,12 +327,18 @@ void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
     mBatches.clear();
 
     for (uint32_t index : mSortOrder) {
-        const RenderCommand& command = commands[index];
+        const RenderCommand& command =
+            commands[index];
 
-        if (mBatches.empty() || mBatches.back().mesh != command.mesh) {
+        if (
+            mBatches.empty() ||
+            mBatches.back().mesh != command.mesh
+        ) {
             mBatches.push_back({
                 command.mesh,
-                static_cast<uint32_t>(mObjects.size()),
+                static_cast<uint32_t>(
+                    mObjects.size()
+                ),
                 0
             });
         }
@@ -373,7 +350,9 @@ void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
             glm::mat4(
                 glm::transpose(
                     glm::inverse(
-                        glm::mat3(command.Transform)
+                        glm::mat3(
+                            command.Transform
+                        )
                     )
                 )
             ),

@@ -7,6 +7,8 @@
 #include "Logger.h"
 #include "Renderer/RenderingStructs.h"
 
+#include <vector>
+
 using namespace SUN;
 
 void GraphicsCommands::RegisterContext(GraphicsContext* context) {
@@ -268,34 +270,36 @@ void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
     cmd.bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), buffer.GetIndexType());
 }
 
-void GraphicsCommands::SetViewport(){
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+void GraphicsCommands::SetViewportAndScissor(vk::Extent2D extent) {
+    if (!mContextPtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "Graphics commands not registered to context!"
+        );
         return;
     }
 
-    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+    auto& cmd =
+        mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+
     cmd.setViewport(
         0,
         vk::Viewport(
-            0.f, 
-            static_cast<float>(mContextPtr->mSwapChainExtent.height),
-            static_cast<float>(mContextPtr->mSwapChainExtent.width), 
-            -static_cast<float>(mContextPtr->mSwapChainExtent.height),
+            0.f,
+            static_cast<float>(extent.height),
+            static_cast<float>(extent.width),
+            -static_cast<float>(extent.height),
             0.f,
             1.f
         )
     );
-}
 
-void GraphicsCommands::SetScissor() {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
-        return;
-    }
-    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
     cmd.setScissor(
-        0, vk::Rect2D(vk::Offset2D(0, 0), mContextPtr->mSwapChainExtent)
+        0,
+        vk::Rect2D(
+            vk::Offset2D(0, 0),
+            extent
+        )
     );
 }
 
@@ -361,15 +365,63 @@ vk::raii::ImageView& GraphicsCommands::GetCurrentSwapchainImageView() {
 }
 
 
-void GraphicsCommands::DestroyRenderImage(RenderImage& image) {
-    if (!mContextPtr){
-        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
+void GraphicsCommands::TransitionImage(
+    RenderImage& image,
+    vk::ImageLayout newLayout,
+    vk::AccessFlags2 newAccess,
+    vk::PipelineStageFlags2 newStage) {
+
+    const ImageTransition transition {
+        .image = &image,
+        .newLayout = newLayout,
+        .newAccess = newAccess,
+        .newStage = newStage
+    };
+
+    TransitionImages(
+        std::span<const ImageTransition>(&transition, 1)
+    );
+}
+
+void GraphicsCommands::TransitionImages(
+    std::span<const ImageTransition> transitions) {
+
+    if (transitions.empty())
         return;
+
+    std::vector<vk::ImageMemoryBarrier2> barriers;
+    barriers.reserve(transitions.size());
+
+    for (const ImageTransition& transition : transitions) {
+        if (!transition.image || !transition.image->IsValid())
+            continue;
+
+        RenderImage& image = *transition.image;
+
+        barriers.push_back(
+            MakeImageBarrier(
+                image.image.image,
+                image.layout,
+                transition.newLayout,
+                image.access,
+                transition.newAccess,
+                image.stage,
+                transition.newStage,
+                image.aspect
+            )
+        );
     }
 
-    AllocatedImage& allocatedImage = image.image;
-    allocatedImage.view = nullptr;
-    vmaDestroyImage(mContextPtr->mAllocator, allocatedImage.image, allocatedImage.allocation);
+    ImageBarriers(barriers);
+
+    for (const ImageTransition& transition : transitions) {
+        if (!transition.image || !transition.image->IsValid())
+            continue;
+
+        transition.image->layout = transition.newLayout;
+        transition.image->access = transition.newAccess;
+        transition.image->stage = transition.newStage;
+    }
 }
 
 void GraphicsCommands::TransitionImageLayout(	    

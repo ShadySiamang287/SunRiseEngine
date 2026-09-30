@@ -1,21 +1,34 @@
 #pragma once
 
+#include <array>
+
+#include "Graphics/GraphicsConfig.h"
+#include "Graphics/RenderImage.h"
 #include "Renderer/PostProcessor/PostProcessorPass.h"
 
-namespace SUN{
+namespace SUN {
     class FXAAPass : public PostProcessPass {
     public:
-        FXAAPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& toneMappingImages);
+        explicit FXAAPass(
+            std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& toneMappingImages
+        );
 
-        void Execute(const PostProcessContext& context) override;
-        void Resize(vk::Extent2D newSize) override;
+        void Execute(
+            const PostProcessContext& context
+        ) override;
 
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetOutput(uint32_t frameIndex) override;
+        void Resize(
+            vk::Extent2D newSize
+        ) override;
 
     private:
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& mToneMappingImages;
+        void UpdateDescriptors();
+
+        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>&
+            mToneMappingImages;
 
         DescriptorResources mDescriptors;
+
         vk::raii::PipelineLayout mLayout = nullptr;
         vk::raii::Pipeline mPipeline = nullptr;
         vk::raii::Sampler mSampler = nullptr;

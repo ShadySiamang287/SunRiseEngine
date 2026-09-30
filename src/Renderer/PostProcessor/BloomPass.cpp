@@ -2,43 +2,61 @@
 
 #include "Graphics/GraphicsCommands.h"
 #include "Graphics/ResourceFactory.h"
-
 #include "Renderer/RenderingStructs.h"
 
 using namespace SUN;
 
-BloomPass::BloomPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& brightnessImages, vk::raii::Sampler& sampler) : mBrightnessImages(brightnessImages), mSampler(sampler) {    
-    vk::Extent2D swapchainExtent = GraphicsCommands::GetSwapchainExtent();
-    CreateImages(swapchainExtent);
-    
-    std::array<vk::DescriptorSetLayoutBinding, 2> bloomMappingBindings;
-    bloomMappingBindings[0] = {
+BloomPass::BloomPass(
+    std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& brightnessImages,
+    vk::raii::Sampler& sampler)
+    : mBrightnessImages(brightnessImages),
+      mSampler(sampler) {
+
+    std::array<vk::DescriptorSetLayoutBinding, 2>
+        bindings;
+
+    bindings[0] = {
         .binding = 0,
-        .descriptorType = vk::DescriptorType::eSampledImage,
+        .descriptorType =
+            vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eFragment
+        .stageFlags =
+            vk::ShaderStageFlagBits::eFragment
     };
-    
-    bloomMappingBindings[1] = {
+
+    bindings[1] = {
         .binding = 1,
-        .descriptorType = vk::DescriptorType::eSampler,
+        .descriptorType =
+            vk::DescriptorType::eSampler,
         .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eFragment
+        .stageFlags =
+            vk::ShaderStageFlagBits::eFragment
     };
 
-    mHorizontalDescriptors = ResourceFactory::CreateDescriptorResources(bloomMappingBindings);
-    mVerticalDescriptors = ResourceFactory::CreateDescriptorResources(bloomMappingBindings);
-    mLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(BloomPushConstants), &mHorizontalDescriptors);
+    mHorizontalDescriptors =
+        ResourceFactory::CreateDescriptorResources(
+            bindings
+        );
 
+    mVerticalDescriptors =
+        ResourceFactory::CreateDescriptorResources(
+            bindings
+        );
+
+    mLayout =
+        ResourceFactory::CreatePipelineLayout(
+            vk::ShaderStageFlagBits::eFragment,
+            sizeof(BloomPushConstants),
+            &mHorizontalDescriptors
+        );
 
     PipelineConfig bloomConfig {
         .vertexFile = "./shaders/lightVert.spv",
         .vertexName = "lightVert",
         .fragFile = "./shaders/bloom.spv",
         .fragName = "bloom",
-
-        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
-
+        .primitiveTopology =
+            vk::PrimitiveTopology::eTriangleList,
         .colorAttachmentFormats = {
             vk::Format::eR16G16B16A16Sfloat
         },
@@ -47,199 +65,294 @@ BloomPass::BloomPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& brightnessIm
         },
         .useVertexInput = false
     };
-    mPipeline = ResourceFactory::CreatePipeline(bloomConfig, mLayout, "Bloom Pipeline");
+
+    mPipeline =
+        ResourceFactory::CreatePipeline(
+            bloomConfig,
+            mLayout,
+            "Bloom Pipeline"
+        );
+
+    CreateImages(
+        GraphicsCommands::GetSwapchainExtent()
+    );
+
+    UpdateDescriptors();
 }
 
-void BloomPass::Execute(const PostProcessContext& context) {
+void BloomPass::Execute(
+    const PostProcessContext& context) {
 
-    vk::DescriptorImageInfo brightnessInfo {
-        .sampler = nullptr,
-        .imageView = mBrightnessImages[context.frameIndex].image.view,
-        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-    };
+    const uint32_t frameIndex =
+        context.frameIndex;
 
-    vk::DescriptorImageInfo pingInfo {
-        .sampler = nullptr,
-        .imageView = mBlurHorizontal[context.frameIndex].image.view,
-        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-    };
+    GraphicsCommands::BeginLabel(
+        "Bloom",
+        {0.32F, 0.76F, 0.76F, 1.F}
+    );
 
-    vk::DescriptorImageInfo samplerInfo{
-        .sampler = *mSampler
-    };
-
-    std::array<vk::WriteDescriptorSet, 4> writes {
-        vk::WriteDescriptorSet{
-            .dstSet = *mHorizontalDescriptors.sets[context.frameIndex],
-
-            .dstBinding = 0,
-            .descriptorCount = 1,
-
-            .descriptorType =
-                vk::DescriptorType::eSampledImage,
-
-            .pImageInfo = &brightnessInfo
-        },
-
-        vk::WriteDescriptorSet{
-            .dstSet = *mHorizontalDescriptors.sets[context.frameIndex],
-            .dstBinding = 1,
-            .descriptorCount = 1,
-            .descriptorType = vk::DescriptorType::eSampler,
-            .pImageInfo = &samplerInfo
-        },
-        vk::WriteDescriptorSet{
-            .dstSet = *mVerticalDescriptors.sets[context.frameIndex],
-
-            .dstBinding = 0,
-            .descriptorCount = 1,
-
-            .descriptorType =
-                vk::DescriptorType::eSampledImage,
-
-            .pImageInfo = &pingInfo
-        },
-
-        vk::WriteDescriptorSet{
-            .dstSet = *mVerticalDescriptors.sets[context.frameIndex],
-            .dstBinding = 1,
-            .descriptorCount = 1,
-            .descriptorType = vk::DescriptorType::eSampler,
-            .pImageInfo = &samplerInfo
-        }
-    };
-
-    GraphicsCommands::WriteDescriptors(writes);
-
-    GraphicsCommands::TransitionImageLayout(
-        mBlurHorizontal[context.frameIndex].image.image,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
+    GraphicsCommands::TransitionImage(
+        mBlurHorizontal[frameIndex],
         vk::ImageLayout::eColorAttachmentOptimal,
-
-        vk::AccessFlagBits2::eShaderRead,
         vk::AccessFlagBits2::eColorAttachmentWrite,
-
-        vk::PipelineStageFlagBits2::eFragmentShader,
         vk::PipelineStageFlagBits2::eColorAttachmentOutput
     );
 
-
-    vk::RenderingAttachmentInfo pass1Attachment{
-        .imageView = mBlurHorizontal[context.frameIndex].image.view,
-        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .loadOp = vk::AttachmentLoadOp::eClear,
-        .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue{
-            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+    vk::RenderingAttachmentInfo horizontalAttachment {
+        .imageView =
+            mBlurHorizontal[frameIndex].image.view,
+        .imageLayout =
+            vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp =
+            vk::AttachmentLoadOp::eClear,
+        .storeOp =
+            vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue {
+            vk::ClearColorValue {
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            }
         }
     };
 
-    vk::RenderingInfo pass1Info{
+    vk::RenderingInfo horizontalInfo {
         .renderArea = {
             .offset = {0, 0},
-            .extent = mBlurHorizontal[context.frameIndex].extent
+            .extent =
+                mBlurHorizontal[frameIndex].extent
         },
-        .layerCount = 1,          // Required when viewMask == 0
+        .layerCount = 1,
         .colorAttachmentCount = 1,
-        .pColorAttachments = &pass1Attachment,
+        .pColorAttachments =
+            &horizontalAttachment
     };
 
-    GraphicsCommands::BeginLabel("Bloom", {0.32F, 0.76F, .76F, 1.F});
-    GraphicsCommands::BeginRendering(pass1Info);
-    GraphicsCommands::BindPipeline(mPipeline);
-    GraphicsCommands::PushBloomConstants(mLayout, true);
-    GraphicsCommands::BindDescriptorSets(mLayout, mHorizontalDescriptors);
+    GraphicsCommands::BeginRendering(
+        horizontalInfo
+    );
+
+    GraphicsCommands::SetViewportAndScissor(
+        mBlurHorizontal[frameIndex].extent
+    );
+
+    GraphicsCommands::SetDepthTestEnable(false);
+    GraphicsCommands::SetDepthWriteEnable(false);
+
+    GraphicsCommands::BindPipeline(
+        mPipeline
+    );
+
+    GraphicsCommands::PushBloomConstants(
+        mLayout,
+        true
+    );
+
+    GraphicsCommands::BindDescriptorSets(
+        mLayout,
+        mHorizontalDescriptors
+    );
+
     GraphicsCommands::DrawFullScreenTriangle();
     GraphicsCommands::EndRendering();
 
-    std::array<vk::ImageMemoryBarrier2, 2> barriers {
-        GraphicsCommands::MakeImageBarrier(
-            mBlurHorizontal[context.frameIndex].image.image,
+    const std::array<ImageTransition, 2>
+        middleTransitions {
+            ImageTransition {
+                &mBlurHorizontal[frameIndex],
+                vk::ImageLayout::eShaderReadOnlyOptimal,
+                vk::AccessFlagBits2::eShaderRead,
+                vk::PipelineStageFlagBits2::eFragmentShader
+            },
+            ImageTransition {
+                &mBlurVertical[frameIndex],
+                vk::ImageLayout::eColorAttachmentOptimal,
+                vk::AccessFlagBits2::eColorAttachmentWrite,
+                vk::PipelineStageFlagBits2::eColorAttachmentOutput
+            }
+        };
 
+    GraphicsCommands::TransitionImages(
+        middleTransitions
+    );
+
+    vk::RenderingAttachmentInfo verticalAttachment {
+        .imageView =
+            mBlurVertical[frameIndex].image.view,
+        .imageLayout =
             vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-            vk::AccessFlagBits2::eShaderRead,
-
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        ),
-        GraphicsCommands::MakeImageBarrier(
-            mBlurVertical[context.frameIndex].image.image,
-
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::ImageLayout::eColorAttachmentOptimal,
-
-            vk::AccessFlagBits2::eShaderRead,
-            vk::AccessFlagBits2::eColorAttachmentWrite,
-
-            vk::PipelineStageFlagBits2::eFragmentShader,
-            vk::PipelineStageFlagBits2::eColorAttachmentOutput
-        )
-    };
-    GraphicsCommands::ImageBarriers(barriers);
-
-    vk::RenderingAttachmentInfo pass2Attachment{
-        .imageView = mBlurVertical[context.frameIndex].image.view,
-        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .loadOp = vk::AttachmentLoadOp::eClear,
-        .storeOp = vk::AttachmentStoreOp::eStore,
-        .clearValue = vk::ClearValue{
-            vk::ClearColorValue{0.0f, 0.0f, 0.0f, 0.0f}
+        .loadOp =
+            vk::AttachmentLoadOp::eClear,
+        .storeOp =
+            vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue {
+            vk::ClearColorValue {
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            }
         }
     };
 
-    vk::RenderingInfo pass2Info{
+    vk::RenderingInfo verticalInfo {
         .renderArea = {
             .offset = {0, 0},
-            .extent = mBlurVertical[context.frameIndex].extent
+            .extent =
+                mBlurVertical[frameIndex].extent
         },
-        .layerCount = 1,          // Required when viewMask == 0
+        .layerCount = 1,
         .colorAttachmentCount = 1,
-        .pColorAttachments = &pass2Attachment,
+        .pColorAttachments =
+            &verticalAttachment
     };
-    GraphicsCommands::BeginRendering(pass2Info);
-    GraphicsCommands::PushBloomConstants(mLayout, false);
-    GraphicsCommands::BindDescriptorSets(mLayout, mVerticalDescriptors);
+
+    GraphicsCommands::BeginRendering(
+        verticalInfo
+    );
+
+    GraphicsCommands::SetViewportAndScissor(
+        mBlurVertical[frameIndex].extent
+    );
+
+    GraphicsCommands::PushBloomConstants(
+        mLayout,
+        false
+    );
+
+    GraphicsCommands::BindDescriptorSets(
+        mLayout,
+        mVerticalDescriptors
+    );
+
     GraphicsCommands::DrawFullScreenTriangle();
     GraphicsCommands::EndRendering();
-    GraphicsCommands::TransitionImageLayout(
-        mBlurVertical[context.frameIndex].image.image,
-        vk::ImageLayout::eColorAttachmentOptimal,
+
+    GraphicsCommands::TransitionImage(
+        mBlurVertical[frameIndex],
         vk::ImageLayout::eShaderReadOnlyOptimal,
-
-        vk::AccessFlagBits2::eColorAttachmentWrite,
         vk::AccessFlagBits2::eShaderRead,
-
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
         vk::PipelineStageFlagBits2::eFragmentShader
     );
 
     GraphicsCommands::EndLabel();
-
 }
 
-void BloomPass::Resize(vk::Extent2D newSize) {
-    CleanupImages();
+void BloomPass::Resize(
+    vk::Extent2D newSize) {
+
     CreateImages(newSize);
+    UpdateDescriptors();
 }
 
-std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& BloomPass::GetOutput(uint32_t frameIndex) {
+std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>&
+BloomPass::GetOutputs() {
     return mBlurVertical;
-
 }
 
-void BloomPass::CreateImages(vk::Extent2D size) {
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        mBlurHorizontal[i] = ResourceFactory::CreateRenderImage(vk::Format::eR16G16B16A16Sfloat, size, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::ImageAspectFlagBits::eColor);
-        mBlurVertical[i] = ResourceFactory::CreateRenderImage(vk::Format::eR16G16B16A16Sfloat, size, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::ImageAspectFlagBits::eColor);
+void BloomPass::CreateImages(
+    vk::Extent2D size) {
+
+    for (
+        uint32_t i = 0;
+        i < MAX_FRAMES_IN_FLIGHT;
+        ++i
+    ) {
+        mBlurHorizontal[i] =
+            ResourceFactory::CreateRenderImage(
+                vk::Format::eR16G16B16A16Sfloat,
+                size,
+                vk::ImageLayout::eUndefined,
+                vk::ImageUsageFlagBits::eColorAttachment |
+                    vk::ImageUsageFlagBits::eSampled,
+                vk::ImageAspectFlagBits::eColor
+            );
+
+        mBlurVertical[i] =
+            ResourceFactory::CreateRenderImage(
+                vk::Format::eR16G16B16A16Sfloat,
+                size,
+                vk::ImageLayout::eUndefined,
+                vk::ImageUsageFlagBits::eColorAttachment |
+                    vk::ImageUsageFlagBits::eSampled,
+                vk::ImageAspectFlagBits::eColor
+            );
     }
 }
 
-void BloomPass::CleanupImages(){
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++){
-        GraphicsCommands::DestroyRenderImage(mBlurHorizontal[i]);
-        GraphicsCommands::DestroyRenderImage(mBlurVertical[i]);
+void BloomPass::UpdateDescriptors() {
+    vk::DescriptorImageInfo samplerInfo {
+        .sampler = *mSampler
+    };
+
+    for (
+        uint32_t frameIndex = 0;
+        frameIndex < MAX_FRAMES_IN_FLIGHT;
+        ++frameIndex
+    ) {
+        vk::DescriptorImageInfo brightnessInfo {
+            .sampler = nullptr,
+            .imageView =
+                *mBrightnessImages[frameIndex].image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
+        };
+
+        vk::DescriptorImageInfo horizontalInfo {
+            .sampler = nullptr,
+            .imageView =
+                *mBlurHorizontal[frameIndex].image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
+        };
+
+        std::array<vk::WriteDescriptorSet, 4>
+            writes {
+                vk::WriteDescriptorSet {
+                    .dstSet =
+                        *mHorizontalDescriptors.sets[frameIndex],
+                    .dstBinding = 0,
+                    .descriptorCount = 1,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
+                    .pImageInfo =
+                        &brightnessInfo
+                },
+                vk::WriteDescriptorSet {
+                    .dstSet =
+                        *mHorizontalDescriptors.sets[frameIndex],
+                    .dstBinding = 1,
+                    .descriptorCount = 1,
+                    .descriptorType =
+                        vk::DescriptorType::eSampler,
+                    .pImageInfo =
+                        &samplerInfo
+                },
+                vk::WriteDescriptorSet {
+                    .dstSet =
+                        *mVerticalDescriptors.sets[frameIndex],
+                    .dstBinding = 0,
+                    .descriptorCount = 1,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
+                    .pImageInfo =
+                        &horizontalInfo
+                },
+                vk::WriteDescriptorSet {
+                    .dstSet =
+                        *mVerticalDescriptors.sets[frameIndex],
+                    .dstBinding = 1,
+                    .descriptorCount = 1,
+                    .descriptorType =
+                        vk::DescriptorType::eSampler,
+                    .pImageInfo =
+                        &samplerInfo
+                }
+            };
+
+        GraphicsCommands::WriteDescriptors(
+            writes
+        );
     }
 }

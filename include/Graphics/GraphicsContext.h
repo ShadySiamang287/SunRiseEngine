@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Graphics/vertex.h"
+#include "Graphics/GraphicsConfig.h"
 
 #include <functional>
 
-constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace SUN{
     class Window;

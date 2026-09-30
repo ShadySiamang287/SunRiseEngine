@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Renderer/PostProcessor/PostProcessorPass.h"
+#include "Graphics/RenderImage.h"
 
 namespace SUN {
     struct GBuffer {
