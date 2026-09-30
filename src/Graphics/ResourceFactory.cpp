@@ -307,102 +307,111 @@ vk::ImageCreateInfo imageInfo{
 
     texture.mImage.image = rawImage;
 
-        context->ImmediateSubmit(
-        [&](vk::raii::CommandBuffer& cmd)
-        {
-            vk::ImageMemoryBarrier2 toTransfer{
-                .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
-                .srcAccessMask = {},
+    context->ImmediateSubmit([&](vk::raii::CommandBuffer& cmd) {
+        vk::ImageMemoryBarrier2 toTransfer{
+            .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
+            .srcAccessMask = {},
 
-                .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
-                .dstAccessMask =vk::AccessFlagBits2::eTransferWrite,
+            .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .dstAccessMask =vk::AccessFlagBits2::eTransferWrite,
 
-                .oldLayout = vk::ImageLayout::eUndefined,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eTransferDstOptimal,
 
-                .newLayout = vk::ImageLayout::eTransferDstOptimal,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = texture.mImage.image,
 
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
 
-                .image = texture.mImage.image,
+        vk::DependencyInfo dependency{
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &toTransfer
+        };
 
-                .subresourceRange = {
-                    .aspectMask = vk::ImageAspectFlagBits::eColor,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-                }
-            };
+        cmd.pipelineBarrier2(dependency);
 
-            vk::DependencyInfo dependency{
-                .imageMemoryBarrierCount = 1,
-                .pImageMemoryBarriers = &toTransfer
-            };
+        vk::BufferImageCopy copyRegion{
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
 
-            cmd.pipelineBarrier2(dependency);
+            .imageSubresource = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            },
 
-            vk::BufferImageCopy copyRegion{
-                .bufferOffset = 0,
-                .bufferRowLength = 0,
-                .bufferImageHeight = 0,
+            .imageOffset = { 0, 0, 0 },
 
-                .imageSubresource = {
-                    .aspectMask =
-                        vk::ImageAspectFlagBits::eColor,
-                    .mipLevel = 0,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-                },
+            .imageExtent = {
+                width,
+                height,
+                1
+            }
+        };
 
-                .imageOffset = { 0, 0, 0 },
+        cmd.copyBufferToImage(
+            stagingBuffer,
+            texture.mImage.image,
+            vk::ImageLayout::eTransferDstOptimal,
+            copyRegion
+        );
 
-                .imageExtent = {
-                    width,
-                    height,
-                    1
-                }
-            };
+        vk::ImageMemoryBarrier2 toShaderRead{
+            .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
 
-            cmd.copyBufferToImage(
-                stagingBuffer,
-                texture.mImage.image,
-                vk::ImageLayout::eTransferDstOptimal,
-                copyRegion
-            );
+            .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+            .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
 
-            vk::ImageMemoryBarrier2 toShaderRead{
-                .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
-                .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+            .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+            .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
 
-                .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
-                .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 
-                .oldLayout = vk::ImageLayout::eTransferDstOptimal,
-                .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+            .image = texture.mImage.image,
 
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .subresourceRange = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
 
-                .image = texture.mImage.image,
+        dependency.pImageMemoryBarriers = &toShaderRead;
 
-                .subresourceRange = {
-                    .aspectMask =
-                        vk::ImageAspectFlagBits::eColor,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-                }
-            };
+        cmd.pipelineBarrier2(dependency);
+    });
 
-            dependency.pImageMemoryBarriers =
-                &toShaderRead;
-
-            cmd.pipelineBarrier2(dependency);
+    vk::ImageViewCreateInfo viewInfo{
+        .image = texture.mImage.image,
+        .viewType = vk::ImageViewType::e2D,
+        .format = format,
+        .subresourceRange {
+            .aspectMask = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel = 0,
+            .levelCount = texture.mMipLevels,
+            .baseArrayLayer = 0,
+            .layerCount = 1
         }
-    );
+    };
+    vmaDestroyBuffer(context->mAllocator, stagingBuffer, stagingAllocation);
+    texture.mImage.view = vk::raii::ImageView(context->mDevice, viewInfo);
+
+    return texture;
 }
 
 vk::raii::Sampler ResourceFactory::CreateSampler(const SamplerConfig& config) {
