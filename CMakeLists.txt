@@ -120,8 +120,3 @@ PUBLIC
 target_compile_definitions(SunriseEngine PUBLIC VULKAN_HPP_NO_STRUCT_CONSTRUCTORS GLM_FORCE_RADIANS GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/assets/textures")
-configure_file(
-    "${PROJECT_SOURCE_DIR}/assets/textures/bindless_test_checker.png"
-    "${CMAKE_BINARY_DIR}/assets/textures/bindless_test_checker.png"
-    COPYONLY
-)
