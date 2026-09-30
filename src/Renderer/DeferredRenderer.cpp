@@ -3,6 +3,7 @@
 #include "Graphics/GraphicsCommands.h"
 #include "Graphics/ResourceFactory.h"
 #include "Graphics/vertex.h"
+#include "AssetManagement/AssetManager.h"
 
 #include "Logger.h"
 
@@ -12,7 +13,8 @@
 
 using namespace SUN;
 
-DeferredRenderer::DeferredRenderer(vk::raii::Sampler& sampler) : mImageSampler(sampler) {
+DeferredRenderer::DeferredRenderer(vk::raii::Sampler& sampler, AssetManager& assetManager)
+    : mImageSampler(sampler), mAssetManager(assetManager) {
     std::array<vk::DescriptorSetLayoutBinding, 4> lightingBindings;
     lightingBindings[0] = {
         .binding = 0,
@@ -43,7 +45,11 @@ DeferredRenderer::DeferredRenderer(vk::raii::Sampler& sampler) : mImageSampler(s
     mLightingLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mLightingDescriptors);
 
 
-    mPipelineLayout = ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eVertex, sizeof(PushConstants));
+    mPipelineLayout = ResourceFactory::CreatePipelineLayout(
+        vk::ShaderStageFlagBits::eVertex,
+        sizeof(PushConstants),
+        &mAssetManager.GetTextureDescriptors()
+    );
 
     PipelineConfig gBuffer = {
         .vertexFile = "./shaders/vertMain.spv",
@@ -134,6 +140,7 @@ void DeferredRenderer::Render(RenderContext& context, const RenderQueue& renderQ
     GraphicsCommands::SetScissor();
 
     GraphicsCommands::BindPipeline(mGbufferPipeline);
+    GraphicsCommands::BindDescriptorSets(mPipelineLayout, mAssetManager.GetTextureDescriptors());
 
     GraphicsCommands::SetDepthTestEnable(true);
     GraphicsCommands::SetDepthWriteEnable(true);
@@ -312,7 +319,11 @@ void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
 
         mObjects.push_back({
             command.Transform,
-            glm::mat4(glm::transpose(glm::inverse(glm::mat3(command.Transform))))
+            glm::mat4(glm::transpose(glm::inverse(glm::mat3(command.Transform)))),
+            command.albedoTextureIndex,
+            0,
+            0,
+            0
         });
     }
 }

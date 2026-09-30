@@ -1,11 +1,12 @@
 #include "Renderer/Renderer3D.h"
 #include "Graphics/ResourceFactory.h"
 #include "Graphics/GraphicsCommands.h"
+#include "AssetManagement/AssetManager.h"
 
 
 using namespace SUN;
 
-Renderer3D::Renderer3D() {
+Renderer3D::Renderer3D(AssetManager& assetManager) : mAssetManager(assetManager) {
     SamplerConfig gBufferSamplerConfig{
         .minFilter = vk::Filter::eNearest,
         .magFilter = vk::Filter::eNearest,
@@ -26,7 +27,7 @@ Renderer3D::Renderer3D() {
     mSampler = ResourceFactory::CreateSampler(gBufferSamplerConfig);
 
 
-    mDeferredRenderer = std::make_unique<DeferredRenderer>(mSampler);
+    mDeferredRenderer = std::make_unique<DeferredRenderer>(mSampler, mAssetManager);
     mBloomPass = std::make_unique<BloomPass>(mDeferredRenderer->GetBrightnessImages(), mSampler);
     mToneMappingPass = std::make_unique<ToneMappingPass>(mBloomPass->GetOutput(0), mDeferredRenderer->GetHDRImages(), mSampler);
     mFXAAPass = std::make_unique<FXAAPass>(mToneMappingPass->GetOutput(0));
@@ -42,10 +43,11 @@ void Renderer3D::BeginScene(Camera& camera) {
     mCamera = &camera;
 }
 
-void Renderer3D::SubmitMesh(const Mesh& Mesh, const glm::mat4& Transform) {
+void Renderer3D::SubmitMesh(const Mesh& Mesh, const glm::mat4& Transform, AssetID albedoTexture) {
     mRenderQueue.Submit({
         &Mesh,
-        Transform
+        Transform,
+        mAssetManager.GetTextureIndex(albedoTexture)
     });
 }
 

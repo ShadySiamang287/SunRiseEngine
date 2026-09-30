@@ -8,6 +8,7 @@ namespace SUN {
     struct RenderCommand {
         const Mesh* mesh;
         glm::mat4 Transform;
+        uint32_t albedoTextureIndex = 0;
     };
 
     class RenderQueue {

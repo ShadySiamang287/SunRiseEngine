@@ -45,6 +45,66 @@ DescriptorResources ResourceFactory::CreateDescriptorResources(std::span<vk::Des
     return std::move(temp);
 }
 
+
+DescriptorResources ResourceFactory::CreateBindlessTextureResources(uint32_t maxTextures) {
+    if (!mInstancePtr) {
+        Logger::Log(Logger::ERROR, "No resource factory created!");
+        return {};
+    }
+
+    DescriptorResources resources{};
+
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings{
+        vk::DescriptorSetLayoutBinding{
+            .binding = 0,
+            .descriptorType = vk::DescriptorType::eSampledImage,
+            .descriptorCount = maxTextures,
+            .stageFlags = vk::ShaderStageFlagBits::eFragment
+        },
+        vk::DescriptorSetLayoutBinding{
+            .binding = 1,
+            .descriptorType = vk::DescriptorType::eSampler,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eFragment
+        }
+    };
+
+    std::array<vk::DescriptorBindingFlags, 2> bindingFlags{
+        vk::DescriptorBindingFlagBits::ePartiallyBound,
+        vk::DescriptorBindingFlags{}
+    };
+
+    vk::DescriptorSetLayoutBindingFlagsCreateInfo flagsInfo{
+        .bindingCount = static_cast<uint32_t>(bindingFlags.size()),
+        .pBindingFlags = bindingFlags.data()
+    };
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo{
+        .pNext = &flagsInfo,
+        .bindingCount = static_cast<uint32_t>(bindings.size()),
+        .pBindings = bindings.data()
+    };
+
+    resources.setLayout = vk::raii::DescriptorSetLayout(
+        mInstancePtr->mGraphicsContextPtr->mDevice,
+        layoutInfo
+    );
+
+    std::array<vk::DescriptorSetLayout, MAX_FRAMES_IN_FLIGHT> layouts{
+        *resources.setLayout,
+        *resources.setLayout
+    };
+
+    vk::DescriptorSetAllocateInfo allocInfo{
+        .descriptorPool = mInstancePtr->mGraphicsContextPtr->mDescriptorPool,
+        .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
+        .pSetLayouts = layouts.data()
+    };
+
+    resources.sets = mInstancePtr->mGraphicsContextPtr->mDevice.allocateDescriptorSets(allocInfo);
+    return resources;
+}
+
 vk::raii::PipelineLayout ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlags flags, uint32_t pushConstantsSize, DescriptorResources* resources){
     if (!mInstancePtr) {
         Logger::Log(Logger::ERROR, "No reasource factory created!");

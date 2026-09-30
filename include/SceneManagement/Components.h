@@ -8,6 +8,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Renderer/RenderingStructs.h"
+#include "AssetManagement/Asset.h"
 
 namespace SUN{
     struct TagComponent
@@ -35,6 +36,10 @@ namespace SUN{
 
     struct MeshComponent {
         std::shared_ptr<Mesh> mesh;
+    };
+
+    struct MaterialComponent {
+        AssetID AlbedoTexture = INVALID_ASSET_ID;
     };
 
     struct DirectionalLightComponent {

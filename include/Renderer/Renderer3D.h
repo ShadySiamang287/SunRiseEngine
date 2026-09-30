@@ -7,18 +7,22 @@
 #include "Renderer/PostProcessor/BloomPass.h"
 #include "Renderer/PostProcessor/ToneMappingPass.h"
 #include "Renderer/PostProcessor/FXAAPass.h"
+#include "AssetManagement/Asset.h"
 
 namespace SUN {
 
+    class AssetManager;
+
     class Renderer3D{
     public:
-        Renderer3D();
+        explicit Renderer3D(AssetManager& assetManager);
 
         void BeginScene(Camera& camera);
 
         void SubmitMesh(
             const Mesh& Mesh,
-            const glm::mat4& Transform
+            const glm::mat4& Transform,
+            AssetID albedoTexture = INVALID_ASSET_ID
         );
 
         void SubmitDirectionalLight(
@@ -32,6 +36,8 @@ namespace SUN {
         void EndScene(RenderContext& context);
         void Resize(vk::Extent2D newSize);
     private:
+        AssetManager& mAssetManager;
+
         std::unique_ptr<BloomPass> mBloomPass;
         std::unique_ptr<ToneMappingPass> mToneMappingPass;
         std::unique_ptr<FXAAPass> mFXAAPass;

@@ -13,7 +13,9 @@ void RenderSystem::Render(BaseScene& scene, Renderer3D* renderer) {
         auto& transform = meshView.get<TransformComponent>(entity);
         auto& mesh = meshView.get<MeshComponent>(entity);
 
-        renderer->SubmitMesh(*mesh.mesh, transform.GetTransform());
+        const auto* material = scene.Registry().try_get<MaterialComponent>(entity);
+        const AssetID albedoTexture = material ? material->AlbedoTexture : INVALID_ASSET_ID;
+        renderer->SubmitMesh(*mesh.mesh, transform.GetTransform(), albedoTexture);
     }
 
     auto directionalLightView = scene.Registry().view<TransformComponent, DirectionalLightComponent>();

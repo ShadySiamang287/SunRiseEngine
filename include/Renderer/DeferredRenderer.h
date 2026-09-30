@@ -7,9 +7,11 @@
 #include <span>
 
 namespace SUN {
+    class AssetManager;
+
     class DeferredRenderer {
     public:
-        DeferredRenderer(vk::raii::Sampler& sampler);
+        DeferredRenderer(vk::raii::Sampler& sampler, AssetManager& assetManager);
         ~DeferredRenderer();
 
         void Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* ca,
@@ -39,6 +41,7 @@ namespace SUN {
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mBrightnessImages;
 
         vk::raii::Sampler& mImageSampler;
+        AssetManager& mAssetManager;
 
         ShaderBuffer mFrameDataBuffer;
         ShaderBuffer mObjectDataBuffer;
