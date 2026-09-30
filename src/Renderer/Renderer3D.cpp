@@ -6,21 +6,16 @@
 
 using namespace SUN;
 
-Renderer3D::Renderer3D(
-    AssetManager& assetManager)
+Renderer3D::Renderer3D(AssetManager& assetManager)
     : mAssetManager(assetManager) {
 
     SamplerConfig gBufferSamplerConfig {
         .minFilter = vk::Filter::eNearest,
         .magFilter = vk::Filter::eNearest,
-        .mipmapMode =
-            vk::SamplerMipmapMode::eNearest,
-        .addressModeU =
-            vk::SamplerAddressMode::eClampToEdge,
-        .addressModeV =
-            vk::SamplerAddressMode::eClampToEdge,
-        .addressModeW =
-            vk::SamplerAddressMode::eClampToEdge,
+        .mipmapMode = vk::SamplerMipmapMode::eNearest,
+        .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeW = vk::SamplerAddressMode::eClampToEdge,
         .minLod = 0.0f,
         .maxLod = 0.0f,
         .anisotropy = false,
@@ -28,49 +23,28 @@ Renderer3D::Renderer3D(
     };
 
     mSampler =
-        ResourceFactory::CreateSampler(
-            gBufferSamplerConfig
-        );
+        ResourceFactory::CreateSampler(gBufferSamplerConfig);
 
     mDeferredRenderer =
-        std::make_unique<DeferredRenderer>(
-            mAssetManager
-        );
+        std::make_unique<DeferredRenderer>(mAssetManager);
 
     mSSAOPass =
-        std::make_unique<SSAOPass>(
-            mDeferredRenderer->GetGBuffers(),
-            mSampler
-        );
+        std::make_unique<SSAOPass>(mDeferredRenderer->GetGBuffers(), mSampler);
 
     mLightingPass =
-        std::make_unique<LightingPass>(
-            mDeferredRenderer->GetGBuffers(),
-            mSSAOPass->GetOutputs(),
-            mSampler
-        );
+        std::make_unique<LightingPass>(mDeferredRenderer->GetGBuffers(), mSSAOPass->GetOutputs(), mSampler);
 
     mBloomPass =
-        std::make_unique<BloomPass>(
-            mLightingPass->GetBrightnessImages(),
-            mSampler
-        );
+        std::make_unique<BloomPass>(mLightingPass->GetBrightnessImages(), mSampler);
 
     mToneMappingPass =
-        std::make_unique<ToneMappingPass>(
-            mBloomPass->GetOutputs(),
-            mLightingPass->GetHDRImages(),
-            mSampler
-        );
+        std::make_unique<ToneMappingPass>(mBloomPass->GetOutputs(), mLightingPass->GetHDRImages(), mSampler);
 
     mFXAAPass =
-        std::make_unique<FXAAPass>(
-            mToneMappingPass->GetOutputs()
-        );
+        std::make_unique<FXAAPass>(mToneMappingPass->GetOutputs());
 }
 
-void Renderer3D::BeginScene(
-    Camera& camera) {
+void Renderer3D::BeginScene(Camera& camera) {
 
     mRenderQueue.Clear();
     mDirectionalLights.clear();
@@ -98,69 +72,40 @@ void Renderer3D::SubmitMesh(
     mRenderQueue.Submit({
         &Mesh,
         Transform,
-        mAssetManager.GetTextureIndex(
-            albedoTexture
-        ),
-        mAssetManager.GetTextureIndex(
-            normalTexture
-        ),
-        mAssetManager.GetTextureIndex(
-            materialTexture
-        ),
+        mAssetManager.GetTextureIndex(albedoTexture),
+        mAssetManager.GetTextureIndex(normalTexture),
+        mAssetManager.GetTextureIndex(materialTexture),
         metalicFactor,
         roughnessFactor
     });
 }
 
-void Renderer3D::EndScene(
-    RenderContext& context) {
+void Renderer3D::EndScene(RenderContext& context) {
 
     PostProcessContext postProcessContext {
         .frameIndex = context.frameIndex
     };
 
-    mDeferredRenderer->Prepare(
-        mRenderQueue
-    );
+    mDeferredRenderer->Prepare(mRenderQueue);
 
     const PushConstants pushConstants =
-        mFrameData.Prepare(
-            *mCamera,
-            mDeferredRenderer->GetObjects(),
-            mDirectionalLights,
-            mPointLights
-        );
+        mFrameData.Prepare(*mCamera, mDeferredRenderer->GetObjects(), mDirectionalLights, mPointLights);
 
     GraphicsCommands::BeginDraw();
 
-    mDeferredRenderer->Execute(
-        context,
-        pushConstants
-    );
+    mDeferredRenderer->Execute(context, pushConstants);
 
-    mSSAOPass->Execute(
-        context,
-        pushConstants
-    );
+    mSSAOPass->Execute(context, pushConstants);
 
-    mLightingPass->Execute(
-        context,
-        pushConstants
-    );
+    mLightingPass->Execute(context, pushConstants);
 
     GraphicsCommands::BeginLabel("Post Processing", {1.f, 0.5f, 0.75f, 1.f});
 
-    mBloomPass->Execute(
-        postProcessContext
-    );
+    mBloomPass->Execute(postProcessContext);
 
-    mToneMappingPass->Execute(
-        postProcessContext
-    );
+    mToneMappingPass->Execute(postProcessContext);
 
-    mFXAAPass->Execute(
-        postProcessContext
-    );
+    mFXAAPass->Execute(postProcessContext);
 
     GraphicsCommands::EndLabel();
     GraphicsCommands::EndDraw();
@@ -168,46 +113,27 @@ void Renderer3D::EndScene(
     mCamera = nullptr;
 }
 
-void Renderer3D::Resize(
-    vk::Extent2D newSize) {
+void Renderer3D::Resize(vk::Extent2D newSize) {
 
-    mDeferredRenderer->Resize(
-        newSize
-    );
+    mDeferredRenderer->Resize(newSize);
 
-    mSSAOPass->Resize(
-        newSize
-    );
+    mSSAOPass->Resize(newSize);
 
-    mLightingPass->Resize(
-        newSize
-    );
+    mLightingPass->Resize(newSize);
 
-    mBloomPass->Resize(
-        newSize
-    );
+    mBloomPass->Resize(newSize);
 
-    mToneMappingPass->Resize(
-        newSize
-    );
+    mToneMappingPass->Resize(newSize);
 
-    mFXAAPass->Resize(
-        newSize
-    );
+    mFXAAPass->Resize(newSize);
 }
 
-void Renderer3D::SubmitDirectionalLight(
-    const GPUDirectionalLight& light) {
+void Renderer3D::SubmitDirectionalLight(const GPUDirectionalLight& light) {
 
-    mDirectionalLights.push_back(
-        light
-    );
+    mDirectionalLights.push_back(light);
 }
 
-void Renderer3D::SubmitPointLight(
-    const GPUPointLight& light) {
+void Renderer3D::SubmitPointLight(const GPUPointLight& light) {
 
-    mPointLights.push_back(
-        light
-    );
+    mPointLights.push_back(light);
 }

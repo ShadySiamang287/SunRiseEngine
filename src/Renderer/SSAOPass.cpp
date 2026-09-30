@@ -7,9 +7,7 @@
 
 using namespace SUN;
 
-SSAOPass::SSAOPass(
-    std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers,
-    vk::raii::Sampler& sampler)
+SSAOPass::SSAOPass(std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers, vk::raii::Sampler& sampler)
     : mGBuffers(gBuffers),
       mSampler(sampler) {
 
@@ -36,19 +34,12 @@ SSAOPass::SSAOPass(
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
-    mDescriptors =
-        ResourceFactory::CreateDescriptorResources(bindings);
+    mDescriptors = ResourceFactory::CreateDescriptorResources(bindings);
 
     mLayout =
-        ResourceFactory::CreatePipelineLayout(
-            vk::ShaderStageFlagBits::eFragment,
-            sizeof(PushConstants),
-            &mDescriptors
-        );
+        ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mDescriptors);
 
-    CreateImages(
-        GraphicsCommands::GetSwapchainExtent()
-    );
+    CreateImages(GraphicsCommands::GetSwapchainExtent());
 
     UpdateDescriptors();
 
@@ -64,9 +55,7 @@ SSAOPass::SSAOPass(
     //     binding 2 = sampler
 }
 
-void SSAOPass::Execute(
-    const RenderContext& context,
-    const PushConstants& pushConstants) {
+void SSAOPass::Execute(const RenderContext& context, const PushConstants& pushConstants) {
 
     (void)context;
     (void)pushConstants;
@@ -113,8 +102,7 @@ void SSAOPass::Resize(vk::Extent2D newSize) {
     UpdateDescriptors();
 }
 
-std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>&
-SSAOPass::GetOutputs() {
+std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& SSAOPass::GetOutputs() {
     return mAOImages;
 }
 
@@ -124,11 +112,7 @@ void SSAOPass::CreateImages(vk::Extent2D sourceExtent) {
         std::max(1u, sourceExtent.height / 2)
     };
 
-    for (
-        uint32_t i = 0;
-        i < MAX_FRAMES_IN_FLIGHT;
-        ++i
-    ) {
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         mAOImages[i] =
             ResourceFactory::CreateRenderImage(
                 vk::Format::eR8Unorm,
@@ -146,54 +130,42 @@ void SSAOPass::UpdateDescriptors() {
         .sampler = *mSampler
     };
 
-    for (
-        uint32_t frameIndex = 0;
-        frameIndex < MAX_FRAMES_IN_FLIGHT;
-        ++frameIndex
-    ) {
+    for (uint32_t frameIndex = 0; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
         const GBuffer& gbuffer =
             mGBuffers[frameIndex];
 
         vk::DescriptorImageInfo depthInfo {
             .sampler = nullptr,
             .imageView = *gbuffer.depth.image.view,
-            .imageLayout =
-                vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         vk::DescriptorImageInfo normalInfo {
             .sampler = nullptr,
             .imageView = *gbuffer.normal.image.view,
-            .imageLayout =
-                vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         std::array<vk::WriteDescriptorSet, 3> writes {
             vk::WriteDescriptorSet {
-                .dstSet =
-                    *mDescriptors.sets[frameIndex],
+                .dstSet = *mDescriptors.sets[frameIndex],
                 .dstBinding = 0,
                 .descriptorCount = 1,
-                .descriptorType =
-                    vk::DescriptorType::eSampledImage,
+                .descriptorType = vk::DescriptorType::eSampledImage,
                 .pImageInfo = &depthInfo
             },
             vk::WriteDescriptorSet {
-                .dstSet =
-                    *mDescriptors.sets[frameIndex],
+                .dstSet = *mDescriptors.sets[frameIndex],
                 .dstBinding = 1,
                 .descriptorCount = 1,
-                .descriptorType =
-                    vk::DescriptorType::eSampledImage,
+                .descriptorType = vk::DescriptorType::eSampledImage,
                 .pImageInfo = &normalInfo
             },
             vk::WriteDescriptorSet {
-                .dstSet =
-                    *mDescriptors.sets[frameIndex],
+                .dstSet = *mDescriptors.sets[frameIndex],
                 .dstBinding = 2,
                 .descriptorCount = 1,
-                .descriptorType =
-                    vk::DescriptorType::eSampler,
+                .descriptorType = vk::DescriptorType::eSampler,
                 .pImageInfo = &samplerInfo
             }
         };

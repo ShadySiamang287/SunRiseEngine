@@ -13,10 +13,7 @@ namespace SUN {
             vk::raii::Sampler& sampler
         );
 
-        void Execute(
-            const RenderContext& context,
-            const PushConstants& pushConstants
-        );
+        void Execute(const RenderContext& context, const PushConstants& pushConstants);
 
         void Resize(vk::Extent2D newSize);
 

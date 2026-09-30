@@ -10,15 +10,9 @@
 namespace SUN {
     class SSAOPass {
     public:
-        SSAOPass(
-            std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers,
-            vk::raii::Sampler& sampler
-        );
+        SSAOPass(std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers, vk::raii::Sampler& sampler);
 
-        void Execute(
-            const RenderContext& context,
-            const PushConstants& pushConstants
-        );
+        void Execute(const RenderContext& context, const PushConstants& pushConstants);
 
         void Resize(vk::Extent2D newSize);
 

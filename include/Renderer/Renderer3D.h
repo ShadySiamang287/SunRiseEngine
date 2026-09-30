@@ -17,13 +17,9 @@ namespace SUN {
 
     class Renderer3D {
     public:
-        explicit Renderer3D(
-            AssetManager& assetManager
-        );
+        explicit Renderer3D(AssetManager& assetManager);
 
-        void BeginScene(
-            Camera& camera
-        );
+        void BeginScene(Camera& camera);
 
         void SubmitMesh(
             const Mesh& Mesh,
@@ -38,21 +34,13 @@ namespace SUN {
             float roughnessFactor = 1.f
         );
 
-        void SubmitDirectionalLight(
-            const GPUDirectionalLight& light
-        );
+        void SubmitDirectionalLight(const GPUDirectionalLight& light);
 
-        void SubmitPointLight(
-            const GPUPointLight& light
-        );
+        void SubmitPointLight(const GPUPointLight& light);
 
-        void EndScene(
-            RenderContext& context
-        );
+        void EndScene(RenderContext& context);
 
-        void Resize(
-            vk::Extent2D newSize
-        );
+        void Resize(vk::Extent2D newSize);
 
     private:
         AssetManager& mAssetManager;
@@ -61,31 +49,23 @@ namespace SUN {
 
         RenderFrameData mFrameData;
 
-        std::unique_ptr<DeferredRenderer>
-            mDeferredRenderer;
+        std::unique_ptr<DeferredRenderer> mDeferredRenderer;
 
-        std::unique_ptr<SSAOPass>
-            mSSAOPass;
+        std::unique_ptr<SSAOPass> mSSAOPass;
 
-        std::unique_ptr<LightingPass>
-            mLightingPass;
+        std::unique_ptr<LightingPass> mLightingPass;
 
-        std::unique_ptr<BloomPass>
-            mBloomPass;
+        std::unique_ptr<BloomPass> mBloomPass;
 
-        std::unique_ptr<ToneMappingPass>
-            mToneMappingPass;
+        std::unique_ptr<ToneMappingPass> mToneMappingPass;
 
-        std::unique_ptr<FXAAPass>
-            mFXAAPass;
+        std::unique_ptr<FXAAPass> mFXAAPass;
 
         RenderQueue mRenderQueue;
         const Camera* mCamera = nullptr;
 
-        std::vector<GPUDirectionalLight>
-            mDirectionalLights;
+        std::vector<GPUDirectionalLight> mDirectionalLights;
 
-        std::vector<GPUPointLight>
-            mPointLights;
+        std::vector<GPUPointLight> mPointLights;
     };
 }

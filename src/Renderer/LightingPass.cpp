@@ -13,73 +13,55 @@ LightingPass::LightingPass(
       mAOImages(aoImages),
       mSampler(sampler) {
 
-    std::array<vk::DescriptorSetLayoutBinding, 5>
-        bindings;
+    std::array<vk::DescriptorSetLayoutBinding, 5> bindings;
 
     bindings[0] = {
         .binding = 0,
-        .descriptorType =
-            vk::DescriptorType::eSampledImage,
+        .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
-        .stageFlags =
-            vk::ShaderStageFlagBits::eFragment
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
     bindings[1] = {
         .binding = 1,
-        .descriptorType =
-            vk::DescriptorType::eSampledImage,
+        .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
-        .stageFlags =
-            vk::ShaderStageFlagBits::eFragment
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
     bindings[2] = {
         .binding = 2,
-        .descriptorType =
-            vk::DescriptorType::eSampledImage,
+        .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
-        .stageFlags =
-            vk::ShaderStageFlagBits::eFragment
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
     bindings[3] = {
         .binding = 3,
-        .descriptorType =
-            vk::DescriptorType::eSampler,
+        .descriptorType = vk::DescriptorType::eSampler,
         .descriptorCount = 1,
-        .stageFlags =
-            vk::ShaderStageFlagBits::eFragment
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
     bindings[4] = {
         .binding = 4,
-        .descriptorType =
-            vk::DescriptorType::eSampledImage,
+        .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
-        .stageFlags =
-            vk::ShaderStageFlagBits::eFragment
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
     mDescriptors =
-        ResourceFactory::CreateDescriptorResources(
-            bindings
-        );
+        ResourceFactory::CreateDescriptorResources(bindings);
 
     mLayout =
-        ResourceFactory::CreatePipelineLayout(
-            vk::ShaderStageFlagBits::eFragment,
-            sizeof(PushConstants),
-            &mDescriptors
-        );
+        ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mDescriptors);
 
     PipelineConfig lightingConfig {
         .vertexFile = "./shaders/lightVert.spv",
         .vertexName = "lightVert",
         .fragFile = "./shaders/lightFrag.spv",
         .fragName = "lightFrag",
-        .primitiveTopology =
-            vk::PrimitiveTopology::eTriangleList,
+        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
         .colorAttachmentFormats = {
             vk::Format::eR16G16B16A16Sfloat,
             vk::Format::eR16G16B16A16Sfloat
@@ -92,22 +74,14 @@ LightingPass::LightingPass(
     };
 
     mPipeline =
-        ResourceFactory::CreatePipeline(
-            lightingConfig,
-            mLayout,
-            "Lighting Pipeline"
-        );
+        ResourceFactory::CreatePipeline(lightingConfig, mLayout, "Lighting Pipeline");
 
-    CreateImages(
-        GraphicsCommands::GetSwapchainExtent()
-    );
+    CreateImages(GraphicsCommands::GetSwapchainExtent());
 
     UpdateDescriptors();
 }
 
-void LightingPass::Execute(
-    const RenderContext& context,
-    const PushConstants& pushConstants) {
+void LightingPass::Execute(const RenderContext& context, const PushConstants& pushConstants) {
 
     const uint32_t frameIndex =
         context.frameIndex;
@@ -133,19 +107,13 @@ void LightingPass::Execute(
             }
         };
 
-    GraphicsCommands::TransitionImages(
-        transitions
-    );
+    GraphicsCommands::TransitionImages(transitions);
 
     vk::RenderingAttachmentInfo hdrAttachment {
-        .imageView =
-            mHDRImages[frameIndex].image.view,
-        .imageLayout =
-            vk::ImageLayout::eColorAttachmentOptimal,
-        .loadOp =
-            vk::AttachmentLoadOp::eClear,
-        .storeOp =
-            vk::AttachmentStoreOp::eStore,
+        .imageView = mHDRImages[frameIndex].image.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue {
             vk::ClearColorValue {
                 0.0f,
@@ -157,14 +125,10 @@ void LightingPass::Execute(
     };
 
     vk::RenderingAttachmentInfo brightnessAttachment {
-        .imageView =
-            mBrightnessImages[frameIndex].image.view,
-        .imageLayout =
-            vk::ImageLayout::eColorAttachmentOptimal,
-        .loadOp =
-            vk::AttachmentLoadOp::eClear,
-        .storeOp =
-            vk::AttachmentStoreOp::eStore,
+        .imageView = mBrightnessImages[frameIndex].image.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue {
             vk::ClearColorValue {
                 0.0f,
@@ -184,43 +148,25 @@ void LightingPass::Execute(
     vk::RenderingInfo renderingInfo {
         .renderArea = {
             .offset = {0, 0},
-            .extent =
-                mHDRImages[frameIndex].extent
+            .extent = mHDRImages[frameIndex].extent
         },
         .layerCount = 1,
-        .colorAttachmentCount =
-            static_cast<uint32_t>(
-                attachments.size()
-            ),
-        .pColorAttachments =
-            attachments.data()
+        .colorAttachmentCount = static_cast<uint32_t>(attachments.size()),
+        .pColorAttachments = attachments.data()
     };
 
-    GraphicsCommands::BeginRendering(
-        renderingInfo
-    );
+    GraphicsCommands::BeginRendering(renderingInfo);
 
-    GraphicsCommands::SetViewportAndScissor(
-        mHDRImages[frameIndex].extent
-    );
+    GraphicsCommands::SetViewportAndScissor(mHDRImages[frameIndex].extent);
 
     GraphicsCommands::SetDepthTestEnable(false);
     GraphicsCommands::SetDepthWriteEnable(false);
 
-    GraphicsCommands::BindPipeline(
-        mPipeline
-    );
+    GraphicsCommands::BindPipeline(mPipeline);
 
-    GraphicsCommands::BindDescriptorSets(
-        mLayout,
-        mDescriptors
-    );
+    GraphicsCommands::BindDescriptorSets(mLayout, mDescriptors);
 
-    GraphicsCommands::PushConstants(
-        mLayout,
-        vk::ShaderStageFlagBits::eFragment,
-        pushConstants
-    );
+    GraphicsCommands::PushConstants(mLayout, vk::ShaderStageFlagBits::eFragment, pushConstants);
 
     GraphicsCommands::DrawFullScreenTriangle();
 
@@ -236,31 +182,23 @@ void LightingPass::Execute(
     GraphicsCommands::EndLabel();
 }
 
-void LightingPass::Resize(
-    vk::Extent2D newSize) {
+void LightingPass::Resize(vk::Extent2D newSize) {
 
     CreateImages(newSize);
     UpdateDescriptors();
 }
 
-std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>&
-LightingPass::GetHDRImages() {
+std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& LightingPass::GetHDRImages() {
     return mHDRImages;
 }
 
-std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>&
-LightingPass::GetBrightnessImages() {
+std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& LightingPass::GetBrightnessImages() {
     return mBrightnessImages;
 }
 
-void LightingPass::CreateImages(
-    vk::Extent2D extent) {
+void LightingPass::CreateImages(vk::Extent2D extent) {
 
-    for (
-        uint32_t i = 0;
-        i < MAX_FRAMES_IN_FLIGHT;
-        ++i
-    ) {
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         mHDRImages[i] =
             ResourceFactory::CreateRenderImage(
                 vk::Format::eR16G16B16A16Sfloat,
@@ -288,102 +226,73 @@ void LightingPass::UpdateDescriptors() {
         .sampler = *mSampler
     };
 
-    for (
-        uint32_t frameIndex = 0;
-        frameIndex < MAX_FRAMES_IN_FLIGHT;
-        ++frameIndex
-    ) {
+    for (uint32_t frameIndex = 0; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
         const GBuffer& gbuffer =
             mGBuffers[frameIndex];
 
         vk::DescriptorImageInfo albedoInfo {
             .sampler = nullptr,
-            .imageView =
-                *gbuffer.albedo.image.view,
-            .imageLayout =
-                vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView = *gbuffer.albedo.image.view,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         vk::DescriptorImageInfo normalInfo {
             .sampler = nullptr,
-            .imageView =
-                *gbuffer.normal.image.view,
-            .imageLayout =
-                vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView = *gbuffer.normal.image.view,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         vk::DescriptorImageInfo depthInfo {
             .sampler = nullptr,
-            .imageView =
-                *gbuffer.depth.image.view,
-            .imageLayout =
-                vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView = *gbuffer.depth.image.view,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         vk::DescriptorImageInfo aoInfo {
             .sampler = nullptr,
-            .imageView =
-                *mAOImages[frameIndex].image.view,
-            .imageLayout =
-                vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView = *mAOImages[frameIndex].image.view,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         std::array<vk::WriteDescriptorSet, 5>
             writes {
                 vk::WriteDescriptorSet {
-                    .dstSet =
-                        *mDescriptors.sets[frameIndex],
+                    .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 0,
                     .descriptorCount = 1,
-                    .descriptorType =
-                        vk::DescriptorType::eSampledImage,
-                    .pImageInfo =
-                        &albedoInfo
+                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .pImageInfo = &albedoInfo
                 },
                 vk::WriteDescriptorSet {
-                    .dstSet =
-                        *mDescriptors.sets[frameIndex],
+                    .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 1,
                     .descriptorCount = 1,
-                    .descriptorType =
-                        vk::DescriptorType::eSampledImage,
-                    .pImageInfo =
-                        &normalInfo
+                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .pImageInfo = &normalInfo
                 },
                 vk::WriteDescriptorSet {
-                    .dstSet =
-                        *mDescriptors.sets[frameIndex],
+                    .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 2,
                     .descriptorCount = 1,
-                    .descriptorType =
-                        vk::DescriptorType::eSampledImage,
-                    .pImageInfo =
-                        &depthInfo
+                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .pImageInfo = &depthInfo
                 },
                 vk::WriteDescriptorSet {
-                    .dstSet =
-                        *mDescriptors.sets[frameIndex],
+                    .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 3,
                     .descriptorCount = 1,
-                    .descriptorType =
-                        vk::DescriptorType::eSampler,
-                    .pImageInfo =
-                        &samplerInfo
+                    .descriptorType = vk::DescriptorType::eSampler,
+                    .pImageInfo = &samplerInfo
                 },
                 vk::WriteDescriptorSet {
-                    .dstSet =
-                        *mDescriptors.sets[frameIndex],
+                    .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 4,
                     .descriptorCount = 1,
-                    .descriptorType =
-                        vk::DescriptorType::eSampledImage,
-                    .pImageInfo =
-                        &aoInfo
+                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .pImageInfo = &aoInfo
                 }
             };
 
-        GraphicsCommands::WriteDescriptors(
-            writes
-        );
+        GraphicsCommands::WriteDescriptors(writes);
     }
 }
