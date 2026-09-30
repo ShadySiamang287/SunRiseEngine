@@ -22,7 +22,7 @@ AssetManager::AssetManager() {
         .addressModeV = vk::SamplerAddressMode::eRepeat,
         .addressModeW = vk::SamplerAddressMode::eRepeat,
         .minLod = 0.0f,
-        .maxLod = 0.0f
+        .maxLod = VK_LOD_CLAMP_NONE
     };
     mTextureSampler = ResourceFactory::CreateSampler(samplerConfig);
 

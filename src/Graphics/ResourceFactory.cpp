@@ -8,6 +8,9 @@
 
 #include "Graphics/GraphicsCommands.h"
 
+#include <algorithm>
+#include <bit>
+
 using namespace SUN;
 
 ResourceFactory::ResourceFactory(GraphicsContext* context) : mGraphicsContextPtr(context) {
@@ -263,25 +266,39 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
 }
 
 Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, bool srgb) {
+    if (!pixels || width == 0 || height == 0) {
+        throw std::invalid_argument("CreateTexture2D requires valid pixel data and non-zero dimensions");
+    }
+
     auto* context = mInstancePtr->mGraphicsContextPtr;
-    
-    vk::Format format = srgb ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Unorm;
+    const vk::Format format = srgb ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Unorm;
+    const uint32_t mipLevels = std::bit_width(std::max(width, height));
+
+    const vk::FormatProperties formatProperties = context->mPhysicalDevice.getFormatProperties(format);
+    const vk::FormatFeatureFlags features = formatProperties.optimalTilingFeatures;
+
+    if (!(features & vk::FormatFeatureFlagBits::eBlitSrc) ||
+        !(features & vk::FormatFeatureFlagBits::eBlitDst)) {
+        throw std::runtime_error("Texture format does not support blit-based mip generation");
+    }
+
+    const vk::Filter mipFilter =
+        (features & vk::FormatFeatureFlagBits::eSampledImageFilterLinear)
+            ? vk::Filter::eLinear
+            : vk::Filter::eNearest;
 
     Texture2D texture;
     texture.mContext = context;
     texture.mFormat = format;
-    texture.mExtent = {
-        width,
-        height
-    };
-    texture.mMipLevels = 1;
+    texture.mExtent = {width, height};
+    texture.mMipLevels = mipLevels;
 
-    const vk::DeviceSize imageSize = static_cast<vk::DeviceSize>(width) * static_cast<vk::DeviceSize>(height) * 4;
+    const vk::DeviceSize imageSize =
+        static_cast<vk::DeviceSize>(width) * static_cast<vk::DeviceSize>(height) * 4;
 
     VkBuffer stagingBuffer = VK_NULL_HANDLE;
     VmaAllocation stagingAllocation = VK_NULL_HANDLE;
     VmaAllocationInfo stagingAllocationInfo{};
-
 
     vk::BufferCreateInfo stagingInfo{
         .size = imageSize,
@@ -290,18 +307,14 @@ Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, u
     };
 
     VmaAllocationCreateInfo stagingAllocInfo{
-        .flags =
-            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-            VMA_ALLOCATION_CREATE_MAPPED_BIT,
-
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
         .usage = VMA_MEMORY_USAGE_AUTO
     };
 
     VkResult result = vmaCreateBuffer(
         context->mAllocator,
-        reinterpret_cast<const VkBufferCreateInfo*>(
-            &stagingInfo
-        ),
+        reinterpret_cast<const VkBufferCreateInfo*>(&stagingInfo),
         &stagingAllocInfo,
         &stagingBuffer,
         &stagingAllocation,
@@ -312,31 +325,19 @@ Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, u
         throw std::runtime_error("Failed to create staging buffer");
     }
 
-    std::memcpy(
-        stagingAllocationInfo.pMappedData,
-        pixels,
-        static_cast<size_t>(imageSize)
-    );
-vk::ImageCreateInfo imageInfo{
+    std::memcpy(stagingAllocationInfo.pMappedData, pixels, static_cast<size_t>(imageSize));
+
+    vk::ImageCreateInfo imageInfo{
         .imageType = vk::ImageType::e2D,
         .format = format,
-
-        .extent = {
-            width,
-            height,
-            1
-        },
-
-        .mipLevels = 1,
+        .extent = {width, height, 1},
+        .mipLevels = mipLevels,
         .arrayLayers = 1,
-
         .samples = vk::SampleCountFlagBits::e1,
         .tiling = vk::ImageTiling::eOptimal,
-
-        .usage =
-            vk::ImageUsageFlagBits::eTransferDst |
-            vk::ImageUsageFlagBits::eSampled,
-
+        .usage = vk::ImageUsageFlagBits::eTransferSrc |
+                 vk::ImageUsageFlagBits::eTransferDst |
+                 vk::ImageUsageFlagBits::eSampled,
         .sharingMode = vk::SharingMode::eExclusive,
         .initialLayout = vk::ImageLayout::eUndefined
     };
@@ -349,50 +350,35 @@ vk::ImageCreateInfo imageInfo{
 
     result = vmaCreateImage(
         context->mAllocator,
-        reinterpret_cast<const VkImageCreateInfo*>(
-            &imageInfo
-        ),
+        reinterpret_cast<const VkImageCreateInfo*>(&imageInfo),
         &imageAllocInfo,
         &rawImage,
         &texture.mImage.allocation,
         nullptr
     );
 
-    if (result != VK_SUCCESS)
-    {
-        vmaDestroyBuffer(
-            context->mAllocator,
-            stagingBuffer,
-            stagingAllocation
-        );
-
-        throw std::runtime_error(
-            "Failed to create Texture2D image"
-        );
+    if (result != VK_SUCCESS) {
+        vmaDestroyBuffer(context->mAllocator, stagingBuffer, stagingAllocation);
+        throw std::runtime_error("Failed to create Texture2D image");
     }
 
     texture.mImage.image = rawImage;
 
     context->ImmediateSubmit([&](vk::raii::CommandBuffer& cmd) {
-        vk::ImageMemoryBarrier2 toTransfer{
+        vk::ImageMemoryBarrier2 allMipsToTransfer{
             .srcStageMask = vk::PipelineStageFlagBits2::eNone,
             .srcAccessMask = {},
-
             .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
-            .dstAccessMask =vk::AccessFlagBits2::eTransferWrite,
-
+            .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
             .oldLayout = vk::ImageLayout::eUndefined,
             .newLayout = vk::ImageLayout::eTransferDstOptimal,
-
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-
             .image = texture.mImage.image,
-
             .subresourceRange = {
                 .aspectMask = vk::ImageAspectFlagBits::eColor,
                 .baseMipLevel = 0,
-                .levelCount = 1,
+                .levelCount = mipLevels,
                 .baseArrayLayer = 0,
                 .layerCount = 1
             }
@@ -400,30 +386,22 @@ vk::ImageCreateInfo imageInfo{
 
         vk::DependencyInfo dependency{
             .imageMemoryBarrierCount = 1,
-            .pImageMemoryBarriers = &toTransfer
+            .pImageMemoryBarriers = &allMipsToTransfer
         };
-
         cmd.pipelineBarrier2(dependency);
 
         vk::BufferImageCopy copyRegion{
             .bufferOffset = 0,
             .bufferRowLength = 0,
             .bufferImageHeight = 0,
-
             .imageSubresource = {
                 .aspectMask = vk::ImageAspectFlagBits::eColor,
                 .mipLevel = 0,
                 .baseArrayLayer = 0,
                 .layerCount = 1
             },
-
-            .imageOffset = { 0, 0, 0 },
-
-            .imageExtent = {
-                width,
-                height,
-                1
-            }
+            .imageOffset = {0, 0, 0},
+            .imageExtent = {width, height, 1}
         };
 
         cmd.copyBufferToImage(
@@ -433,32 +411,113 @@ vk::ImageCreateInfo imageInfo{
             copyRegion
         );
 
-        vk::ImageMemoryBarrier2 toShaderRead{
+        int32_t mipWidth = static_cast<int32_t>(width);
+        int32_t mipHeight = static_cast<int32_t>(height);
+
+        for (uint32_t mip = 1; mip < mipLevels; ++mip) {
+            vk::ImageMemoryBarrier2 previousMipToSource{
+                .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+                .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .dstAccessMask = vk::AccessFlagBits2::eTransferRead,
+                .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+                .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = texture.mImage.image,
+                .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = mip - 1,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+
+            dependency.pImageMemoryBarriers = &previousMipToSource;
+            cmd.pipelineBarrier2(dependency);
+
+            const int32_t nextWidth = std::max(mipWidth / 2, 1);
+            const int32_t nextHeight = std::max(mipHeight / 2, 1);
+
+            vk::ImageBlit blit{
+                .srcSubresource = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .mipLevel = mip - 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+                .srcOffsets = {
+                    vk::Offset3D{0, 0, 0},
+                    vk::Offset3D{mipWidth, mipHeight, 1}
+                },
+                .dstSubresource = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .mipLevel = mip,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+                .dstOffsets = {
+                    vk::Offset3D{0, 0, 0},
+                    vk::Offset3D{nextWidth, nextHeight, 1}
+                }
+            };
+
+            cmd.blitImage(
+                texture.mImage.image,
+                vk::ImageLayout::eTransferSrcOptimal,
+                texture.mImage.image,
+                vk::ImageLayout::eTransferDstOptimal,
+                blit,
+                mipFilter
+            );
+
+            vk::ImageMemoryBarrier2 previousMipToShaderRead{
+                .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                .srcAccessMask = vk::AccessFlagBits2::eTransferRead,
+                .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+                .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
+                .oldLayout = vk::ImageLayout::eTransferSrcOptimal,
+                .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = texture.mImage.image,
+                .subresourceRange = {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = mip - 1,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+
+            dependency.pImageMemoryBarriers = &previousMipToShaderRead;
+            cmd.pipelineBarrier2(dependency);
+
+            mipWidth = nextWidth;
+            mipHeight = nextHeight;
+        }
+
+        vk::ImageMemoryBarrier2 lastMipToShaderRead{
             .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
             .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
-
             .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
             .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
-
             .oldLayout = vk::ImageLayout::eTransferDstOptimal,
             .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-
             .image = texture.mImage.image,
-
             .subresourceRange = {
                 .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
+                .baseMipLevel = mipLevels - 1,
                 .levelCount = 1,
                 .baseArrayLayer = 0,
                 .layerCount = 1
             }
         };
 
-        dependency.pImageMemoryBarriers = &toShaderRead;
-
+        dependency.pImageMemoryBarriers = &lastMipToShaderRead;
         cmd.pipelineBarrier2(dependency);
     });
 
@@ -466,14 +525,15 @@ vk::ImageCreateInfo imageInfo{
         .image = texture.mImage.image,
         .viewType = vk::ImageViewType::e2D,
         .format = format,
-        .subresourceRange {
+        .subresourceRange = {
             .aspectMask = vk::ImageAspectFlagBits::eColor,
             .baseMipLevel = 0,
-            .levelCount = texture.mMipLevels,
+            .levelCount = mipLevels,
             .baseArrayLayer = 0,
             .layerCount = 1
         }
     };
+
     texture.mImage.view = vk::raii::ImageView(context->mDevice, viewInfo);
     vmaDestroyBuffer(context->mAllocator, stagingBuffer, stagingAllocation);
 
