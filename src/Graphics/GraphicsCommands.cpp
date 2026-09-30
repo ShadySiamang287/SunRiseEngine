@@ -321,7 +321,7 @@ void GraphicsCommands::SetDepthWriteEnable(bool state){
     cmd.setDepthWriteEnable(state);
 }
 
-void GraphicsCommands::WriteDescriptors(const std::span<vk::WriteDescriptorSet> writes) {
+void GraphicsCommands::WriteDescriptors(std::span<const vk::WriteDescriptorSet> writes) {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
