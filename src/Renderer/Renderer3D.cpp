@@ -95,8 +95,11 @@ void Renderer3D::EndScene(RenderContext& context) {
 
     mDeferredRenderer->Execute(context, pushConstants);
 
+    GraphicsCommands::BeginLabel("SSAO", {0.f, 0.5f, 0.75f, 1.f});
     mSSAOPass->Execute(context, pushConstants);
     mSSAOBlurPass->Execute(context);
+    GraphicsCommands::EndLabel();
+
 
     mLightingPass->Execute(context, pushConstants);
 

@@ -38,17 +38,19 @@ LightingPass::LightingPass(
 
     bindings[3] = {
         .binding = 3,
-        .descriptorType = vk::DescriptorType::eSampler,
+        .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
     bindings[4] = {
         .binding = 4,
-        .descriptorType = vk::DescriptorType::eSampledImage,
+        .descriptorType = vk::DescriptorType::eSampler,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
+
+
 
     mDescriptors =
         ResourceFactory::CreateDescriptorResources(bindings);
@@ -277,20 +279,21 @@ void LightingPass::UpdateDescriptors() {
                     .descriptorType = vk::DescriptorType::eSampledImage,
                     .pImageInfo = &depthInfo
                 },
+
                 vk::WriteDescriptorSet {
                     .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 3,
                     .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eSampler,
-                    .pImageInfo = &samplerInfo
+                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .pImageInfo = &aoInfo
                 },
                 vk::WriteDescriptorSet {
                     .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 4,
                     .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eSampledImage,
-                    .pImageInfo = &aoInfo
-                }
+                    .descriptorType = vk::DescriptorType::eSampler,
+                    .pImageInfo = &samplerInfo
+                },
             };
 
         GraphicsCommands::WriteDescriptors(writes);

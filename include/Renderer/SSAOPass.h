@@ -16,7 +16,7 @@ namespace SUN {
     // Use float4 in the shader for the samples/settings to keep layout simple.
     struct SSAOData {
         std::array<glm::vec4, SSAO_KERNEL_SIZE> samples;
-        glm::vec4 settings{0.5f, 0.025f, static_cast<float>(SSAO_KERNEL_SIZE), 1.0f};
+        glm::vec4 settings{0.25f, 0.03f, static_cast<float>(SSAO_KERNEL_SIZE), 1.0f};
         // settings = radius, bias, kernelSize, power
     };
 

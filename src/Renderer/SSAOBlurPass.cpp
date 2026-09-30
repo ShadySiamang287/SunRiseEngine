@@ -26,22 +26,21 @@ SSAOBlurPass::SSAOBlurPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& ssaoIm
     //   x, y from -2 to < 2
     //   average 16 samples
     //
-    // PipelineConfig config{
-    //     .vertexFile = "./shaders/lightVert.spv",
-    //     .vertexName = "lightVert",
-    //     .fragFile = "./shaders/ssaoBlur.spv",
-    //     .fragName = "ssaoBlur",
-    //     .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
-    //     .colorAttachmentFormats = { vk::Format::eR8Unorm },
-    //     .colorAttachmentLocations = { 0 },
-    //     .useVertexInput = false
-    // };
-    // mPipeline = ResourceFactory::CreatePipeline(config, mLayout, "SSAO Blur Pipeline");
+    PipelineConfig config{
+        .vertexFile = "./shaders/lightVert.spv",
+        .vertexName = "lightVert",
+        .fragFile = "./shaders/ssaoBlur.spv",
+        .fragName = "ssaoBlur",
+        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
+        .colorAttachmentFormats = { vk::Format::eR8Unorm },
+        .colorAttachmentLocations = { 0 },
+        .useVertexInput = false
+    };
+    mPipeline = ResourceFactory::CreatePipeline(config, mLayout, "SSAO Blur Pipeline");
 }
 
 void SSAOBlurPass::Execute(const RenderContext& context) {
     (void)context;
-
     // TODO:
     // 1. Transition mBlurredAOImages[context.frameIndex] to eColorAttachmentOptimal.
     // 2. Begin rendering into it.
@@ -51,6 +50,51 @@ void SSAOBlurPass::Execute(const RenderContext& context) {
     // 6. DrawFullScreenTriangle().
     // 7. End rendering.
     // 8. Transition blurred AO to eShaderReadOnlyOptimal for LightingPass.
+    GraphicsCommands::BeginLabel("SSAO Blur", {0.5, 1.f, 0.53, 1.f});
+    GraphicsCommands::TransitionImage(
+        mBlurredAOImages[context.frameIndex],
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+        vk::RenderingAttachmentInfo outputAttachment {
+        .imageView = mBlurredAOImages[context.frameIndex].image.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue {
+            vk::ClearColorValue {
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            }
+        }
+    };
+    vk::RenderingInfo renderingInfo {
+        .renderArea = {
+            .offset = {0, 0},
+            .extent = mBlurredAOImages[context.frameIndex].extent
+        },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &outputAttachment
+    };
+    GraphicsCommands::BeginRendering(renderingInfo);
+    GraphicsCommands::SetViewportAndScissor(mBlurredAOImages[context.frameIndex].extent);
+    GraphicsCommands::SetDepthTestEnable(false);
+    GraphicsCommands::SetDepthWriteEnable(false);
+    GraphicsCommands::BindPipeline(mPipeline);
+    GraphicsCommands::BindDescriptorSets(mLayout, mDescriptors);
+    GraphicsCommands::DrawFullScreenTriangle();
+    GraphicsCommands::EndRendering();
+    GraphicsCommands::TransitionImage(
+        mBlurredAOImages[context.frameIndex],
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::AccessFlagBits2::eShaderRead,
+        vk::PipelineStageFlagBits2::eFragmentShader
+    );
+    GraphicsCommands::EndLabel();
 }
 
 void SSAOBlurPass::Resize(vk::Extent2D newSize) {

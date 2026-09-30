@@ -44,17 +44,17 @@ SSAOPass::SSAOPass(std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers, vk::raii
 
     // TODO: create the SSAO pipeline once your shader exists.
     //
-    // PipelineConfig config{
-    //     .vertexFile = "./shaders/lightVert.spv",
-    //     .vertexName = "lightVert",
-    //     .fragFile = "./shaders/ssao.spv",
-    //     .fragName = "ssao",
-    //     .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
-    //     .colorAttachmentFormats = { vk::Format::eR8Unorm },
-    //     .colorAttachmentLocations = { 0 },
-    //     .useVertexInput = false
-    // };
-    // mPipeline = ResourceFactory::CreatePipeline(config, mLayout, "SSAO Pipeline");
+    PipelineConfig config{
+        .vertexFile = "./shaders/lightVert.spv",
+        .vertexName = "lightVert",
+        .fragFile = "./shaders/ssao.spv",
+        .fragName = "ssao",
+        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
+        .colorAttachmentFormats = { vk::Format::eR8Unorm },
+        .colorAttachmentLocations = { 0 },
+        .useVertexInput = false
+    };
+    mPipeline = ResourceFactory::CreatePipeline(config, mLayout, "SSAO Pipeline");
 }
 
 void SSAOPass::Execute(const RenderContext& context, const PushConstants& pushConstants) {
@@ -88,6 +88,55 @@ void SSAOPass::Execute(const RenderContext& context, const PushConstants& pushCo
     // 6. DrawFullScreenTriangle().
     // 7. End rendering.
     // 8. Transition the AO image to eShaderReadOnlyOptimal.
+    GraphicsCommands::BeginLabel("SSAO AO generation", {0.6f, 0.24f, 1.f, 1.f});
+    GraphicsCommands::TransitionImage(
+        mAOImages[context.frameIndex],
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    );
+
+    vk::RenderingAttachmentInfo outputAttachment {
+        .imageView = mAOImages[context.frameIndex].image.view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearValue {
+            vk::ClearColorValue {
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            }
+        }
+    };
+    vk::RenderingInfo renderingInfo {
+        .renderArea = {
+            .offset = {0, 0},
+            .extent = mAOImages[context.frameIndex].extent
+        },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &outputAttachment
+    };
+
+    GraphicsCommands::BeginRendering(renderingInfo);
+    GraphicsCommands::SetViewportAndScissor(mAOImages[context.frameIndex].extent);
+    GraphicsCommands::SetDepthTestEnable(false);
+    GraphicsCommands::SetDepthWriteEnable(false);
+    GraphicsCommands::BindPipeline(mPipeline);
+    GraphicsCommands::BindDescriptorSets(mLayout, mDescriptors);
+    GraphicsCommands::PushConstants(mLayout, vk::ShaderStageFlagBits::eFragment, pushConstants);
+    GraphicsCommands::DrawFullScreenTriangle();
+    GraphicsCommands::EndRendering();
+    GraphicsCommands::TransitionImage(
+        mAOImages[context.frameIndex],
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::AccessFlagBits2::eShaderRead,
+        vk::PipelineStageFlagBits2::eFragmentShader
+    );
+
+    GraphicsCommands::EndLabel();
 }
 
 void SSAOPass::Resize(vk::Extent2D newSize) {
