@@ -87,10 +87,7 @@ void GraphicsCommands::EndFrame(){
         .pSignalSemaphoreInfos = &renderFinished
     };
 
-    mContextPtr->mGraphicsQueue.submit2(
-        submitInfo,
-        *frame.inFlightFence
-    );
+    mContextPtr->mGraphicsQueue.submit2(submitInfo, *frame.inFlightFence);
 
     const vk::PresentInfoKHR presentInfoKHR {
         .waitSemaphoreCount = 1,
@@ -272,10 +269,7 @@ void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
 
 void GraphicsCommands::SetViewportAndScissor(vk::Extent2D extent) {
     if (!mContextPtr) {
-        Logger::Log(
-            Logger::ERROR,
-            "Graphics commands not registered to context!"
-        );
+        Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
 
@@ -294,13 +288,7 @@ void GraphicsCommands::SetViewportAndScissor(vk::Extent2D extent) {
         )
     );
 
-    cmd.setScissor(
-        0,
-        vk::Rect2D(
-            vk::Offset2D(0, 0),
-            extent
-        )
-    );
+    cmd.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), extent));
 }
 
 void GraphicsCommands::SetDepthTestEnable(bool state){
@@ -364,7 +352,6 @@ vk::raii::ImageView& GraphicsCommands::GetCurrentSwapchainImageView() {
     return mContextPtr->mSwapChainImageViews[mContextPtr->mImageIndex];
 }
 
-
 void GraphicsCommands::TransitionImage(
     RenderImage& image,
     vk::ImageLayout newLayout,
@@ -378,13 +365,10 @@ void GraphicsCommands::TransitionImage(
         .newStage = newStage
     };
 
-    TransitionImages(
-        std::span<const ImageTransition>(&transition, 1)
-    );
+    TransitionImages(std::span<const ImageTransition>(&transition, 1));
 }
 
-void GraphicsCommands::TransitionImages(
-    std::span<const ImageTransition> transitions) {
+void GraphicsCommands::TransitionImages(std::span<const ImageTransition> transitions) {
 
     if (transitions.empty())
         return;
@@ -452,7 +436,6 @@ void GraphicsCommands::TransitionImageLayout(
     );
 }
 
-
 vk::ImageMemoryBarrier2 GraphicsCommands::MakeImageBarrier(
                 vk::Image image,
                 vk::ImageLayout oldLayout,
@@ -492,11 +475,9 @@ void GraphicsCommands::ImageBarriers(std::span<const vk::ImageMemoryBarrier2> ba
         return;
 
     vk::DependencyInfo dependencyInfo{
-        .imageMemoryBarrierCount =
-            static_cast<uint32_t>(barriers.size()),
+        .imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size()),
 
-        .pImageMemoryBarriers =
-            barriers.data()
+        .pImageMemoryBarriers = barriers.data()
     };
 
     mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer.pipelineBarrier2(dependencyInfo);

@@ -37,30 +37,21 @@ DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
         .useVertexInput = true
     };
 
-    mPipeline = ResourceFactory::CreatePipeline(
-        gBufferConfig,
-        mPipelineLayout,
-        "GBuffer pipeline"
-    );
+    mPipeline = ResourceFactory::CreatePipeline(gBufferConfig, mPipelineLayout, "GBuffer pipeline");
 
     mSortOrder.reserve(MAX_OBJECTS);
     mObjects.reserve(MAX_OBJECTS);
     mBatches.reserve(256);
 
-    CreateGBuffers(
-        GraphicsCommands::GetSwapchainExtent()
-    );
+    CreateGBuffers(GraphicsCommands::GetSwapchainExtent());
 }
 
-void DeferredRenderer::Prepare(
-    const RenderQueue& renderQueue) {
+void DeferredRenderer::Prepare(const RenderQueue& renderQueue) {
 
     BuildBatches(renderQueue);
 }
 
-void DeferredRenderer::Execute(
-    const RenderContext& context,
-    const PushConstants& pushConstants) {
+void DeferredRenderer::Execute(const RenderContext& context, const PushConstants& pushConstants) {
 
     GBuffer& gbuffer =
         mGBuffers[context.frameIndex];
@@ -93,14 +84,11 @@ void DeferredRenderer::Execute(
             }
         };
 
-    GraphicsCommands::TransitionImages(
-        beginTransitions
-    );
+    GraphicsCommands::TransitionImages(beginTransitions);
 
     vk::RenderingAttachmentInfo albedoAttachment {
         .imageView = gbuffer.albedo.image.view,
-        .imageLayout =
-            vk::ImageLayout::eColorAttachmentOptimal,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue {
@@ -115,8 +103,7 @@ void DeferredRenderer::Execute(
 
     vk::RenderingAttachmentInfo normalAttachment {
         .imageView = gbuffer.normal.image.view,
-        .imageLayout =
-            vk::ImageLayout::eColorAttachmentOptimal,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue {
@@ -131,8 +118,7 @@ void DeferredRenderer::Execute(
 
     vk::RenderingAttachmentInfo depthAttachment {
         .imageView = gbuffer.depth.image.view,
-        .imageLayout =
-            vk::ImageLayout::eDepthAttachmentOptimal,
+        .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue {
@@ -155,46 +141,26 @@ void DeferredRenderer::Execute(
             .extent = gbuffer.albedo.extent
         },
         .layerCount = 1,
-        .colorAttachmentCount =
-            static_cast<uint32_t>(
-                colorAttachments.size()
-            ),
-        .pColorAttachments =
-            colorAttachments.data(),
-        .pDepthAttachment =
-            &depthAttachment
+        .colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size()),
+        .pColorAttachments = colorAttachments.data(),
+        .pDepthAttachment = &depthAttachment
     };
 
-    GraphicsCommands::BeginRendering(
-        renderingInfo
-    );
+    GraphicsCommands::BeginRendering(renderingInfo);
 
-    GraphicsCommands::SetViewportAndScissor(
-        gbuffer.albedo.extent
-    );
+    GraphicsCommands::SetViewportAndScissor(gbuffer.albedo.extent);
 
-    GraphicsCommands::BindPipeline(
-        mPipeline
-    );
+    GraphicsCommands::BindPipeline(mPipeline);
 
-    GraphicsCommands::BindDescriptorSets(
-        mPipelineLayout,
-        mAssetManager.GetTextureDescriptors()
-    );
+    GraphicsCommands::BindDescriptorSets(mPipelineLayout, mAssetManager.GetTextureDescriptors());
 
     GraphicsCommands::SetDepthTestEnable(true);
     GraphicsCommands::SetDepthWriteEnable(true);
 
-    GraphicsCommands::PushConstants(
-        mPipelineLayout,
-        vk::ShaderStageFlagBits::eVertex,
-        pushConstants
-    );
+    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex, pushConstants);
 
     for (const auto& batch : mBatches) {
-        GraphicsCommands::BindGeometryBuffer(
-            batch.mesh->buffer
-        );
+        GraphicsCommands::BindGeometryBuffer(batch.mesh->buffer);
 
         GraphicsCommands::DrawIndexed(
             batch.mesh->buffer.GetIndexCount(),
@@ -229,31 +195,25 @@ void DeferredRenderer::Execute(
             }
         };
 
-    GraphicsCommands::TransitionImages(
-        endTransitions
-    );
+    GraphicsCommands::TransitionImages(endTransitions);
 
     GraphicsCommands::EndLabel();
 }
 
-void DeferredRenderer::Resize(
-    vk::Extent2D newSize) {
+void DeferredRenderer::Resize(vk::Extent2D newSize) {
 
     CreateGBuffers(newSize);
 }
 
-std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>&
-DeferredRenderer::GetGBuffers() {
+std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& DeferredRenderer::GetGBuffers() {
     return mGBuffers;
 }
 
-std::span<const ObjectData>
-DeferredRenderer::GetObjects() const {
+std::span<const ObjectData> DeferredRenderer::GetObjects() const {
     return mObjects;
 }
 
-void DeferredRenderer::CreateGBuffers(
-    vk::Extent2D extent) {
+void DeferredRenderer::CreateGBuffers(vk::Extent2D extent) {
 
     for (auto& gbuffer : mGBuffers) {
         gbuffer.albedo =
@@ -288,8 +248,7 @@ void DeferredRenderer::CreateGBuffers(
     }
 }
 
-void DeferredRenderer::BuildBatches(
-    const RenderQueue& renderQueue) {
+void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
 
     const auto& commands =
         renderQueue.GetCommands();
@@ -309,11 +268,7 @@ void DeferredRenderer::BuildBatches(
 
     mSortOrder.resize(count);
 
-    std::iota(
-        mSortOrder.begin(),
-        mSortOrder.end(),
-        0u
-    );
+    std::iota(mSortOrder.begin(), mSortOrder.end(), 0u);
 
     std::ranges::sort(
         mSortOrder,
@@ -330,32 +285,15 @@ void DeferredRenderer::BuildBatches(
         const RenderCommand& command =
             commands[index];
 
-        if (
-            mBatches.empty() ||
-            mBatches.back().mesh != command.mesh
-        ) {
-            mBatches.push_back({
-                command.mesh,
-                static_cast<uint32_t>(
-                    mObjects.size()
-                ),
-                0
-            });
+        if (mBatches.empty() || mBatches.back().mesh != command.mesh) {
+            mBatches.push_back({ command.mesh, static_cast<uint32_t>(mObjects.size()), 0 });
         }
 
         mBatches.back().instanceCount++;
 
         mObjects.push_back({
             command.Transform,
-            glm::mat4(
-                glm::transpose(
-                    glm::inverse(
-                        glm::mat3(
-                            command.Transform
-                        )
-                    )
-                )
-            ),
+            glm::mat4(glm::transpose(glm::inverse(glm::mat3(command.Transform)))),
             command.albedoTextureIndex,
             command.normalTextureIndex,
             command.materialTexturIndex,

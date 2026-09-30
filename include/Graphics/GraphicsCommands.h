@@ -25,42 +25,22 @@ namespace SUN {
         static void EndFrame();
 
         static void BeginDraw();
-        static void DrawIndexed(
-            int indexCount,
-            int instanceCount,
-            int firstIndex,
-            int vertexOffset,
-            int firstInstance
-        );
-        static void Draw(
-            int vertexCount,
-            int instanceCount,
-            int firstVertex,
-            int firstInstance
-        );
+        static void DrawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance);
+        static void Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
         static void DrawFullScreenTriangle();
         static void EndDraw();
 
-        static void PushBloomConstants(
-            vk::raii::PipelineLayout& layout,
-            bool horizontal
-        );
+        static void PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal);
 
         static void BeginRendering(vk::RenderingInfo& info);
         static void EndRendering();
 
-        static void BeginLabel(
-            std::string labelName,
-            std::array<float, 4> colours
-        );
+        static void BeginLabel(std::string labelName, std::array<float, 4> colours);
         static void EndLabel();
 
         static void BindPipeline(vk::raii::Pipeline& pipeline);
         static void BindGeometryBuffer(const GeometryBuffer& buffer);
-        static void BindDescriptorSets(
-            vk::raii::PipelineLayout& layout,
-            const DescriptorResources& resources
-        );
+        static void BindDescriptorSets(vk::raii::PipelineLayout& layout, const DescriptorResources& resources);
         static void PushConstants(
             vk::raii::PipelineLayout& layout,
             vk::ShaderStageFlags flags,
@@ -71,9 +51,7 @@ namespace SUN {
         static void SetDepthTestEnable(bool state);
         static void SetDepthWriteEnable(bool state);
 
-        static void WriteDescriptors(
-            std::span<const vk::WriteDescriptorSet> writes
-        );
+        static void WriteDescriptors(std::span<const vk::WriteDescriptorSet> writes);
 
         static vk::Format GetSwapchainFormat();
         static vk::Extent2D GetSwapchainExtent();
@@ -87,9 +65,7 @@ namespace SUN {
             vk::PipelineStageFlags2 newStage
         );
 
-        static void TransitionImages(
-            std::span<const ImageTransition> transitions
-        );
+        static void TransitionImages(std::span<const ImageTransition> transitions);
 
         // Raw image transition for resources not represented by RenderImage,
         // such as swapchain images.
@@ -117,9 +93,7 @@ namespace SUN {
                 vk::ImageAspectFlagBits::eColor
         );
 
-        static void ImageBarriers(
-            std::span<const vk::ImageMemoryBarrier2> barriers
-        );
+        static void ImageBarriers(std::span<const vk::ImageMemoryBarrier2> barriers);
 
         static GraphicsContext* mContextPtr;
     };
