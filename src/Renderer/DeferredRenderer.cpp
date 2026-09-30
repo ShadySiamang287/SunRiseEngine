@@ -321,9 +321,9 @@ void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
             command.Transform,
             glm::mat4(glm::transpose(glm::inverse(glm::mat3(command.Transform)))),
             command.albedoTextureIndex,
+            command.normalTextureIndex,
+            command.materialTexturIndex,
             0,
-            0,
-            0
         });
     }
 }

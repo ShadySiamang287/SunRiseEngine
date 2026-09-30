@@ -22,7 +22,11 @@ namespace SUN {
         void SubmitMesh(
             const Mesh& Mesh,
             const glm::mat4& Transform,
-            AssetID albedoTexture = INVALID_ASSET_ID
+            AssetID albedoTexture = INVALID_ASSET_ID,
+            AssetID normalTexture = INVALID_ASSET_ID,
+            AssetID materialTexture = INVALID_ASSET_ID,
+            float metalicFactor = 1.f,
+            float roughnessFactor = 1.f
         );
 
         void SubmitDirectionalLight(

@@ -9,6 +9,10 @@ namespace SUN {
         const Mesh* mesh;
         glm::mat4 Transform;
         uint32_t albedoTextureIndex = 0;
+        uint32_t normalTextureIndex = 0;
+        uint32_t materialTexturIndex = 0;
+        float metalicFactor = 1.f;
+        float roughnessFactor = 1.f;
     };
 
     class RenderQueue {

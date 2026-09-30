@@ -65,10 +65,16 @@ namespace SUN {
     struct ObjectData{
         glm::mat4 model;
         glm::mat4 normal;
+        
         uint32_t albedoTextureIndex = 0;
+        uint32_t normalTextureIndex = 0;
+        uint32_t materialTextureIndex = 0;
+
+        float metalicFactor = 1.f;
+        float roughnessFactor = 1.f;
+
         uint32_t padding0 = 0;
         uint32_t padding1 = 0;
-        uint32_t padding2 = 0;
     };
 
     struct DrawBatch {

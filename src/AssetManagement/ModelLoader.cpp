@@ -19,6 +19,10 @@ namespace {
     struct LoadedPrimitive {
         std::shared_ptr<Mesh> mesh;
         AssetID albedoTexture = INVALID_ASSET_ID;
+        AssetID normalTexture = INVALID_ASSET_ID;
+        AssetID materialTexture = INVALID_ASSET_ID;
+        float metalicFactor = 1.f;
+        float roughnessFactor = 1.f;
         std::string name;
     };
 
@@ -74,7 +78,6 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
     constexpr auto options =
         fastgltf::Options::LoadExternalBuffers |
-        fastgltf::Options::LoadGLBBuffers |
         fastgltf::Options::GenerateMeshIndices;
 
     auto parsed = parser.loadGltf(
@@ -102,9 +105,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
         auto& outputMesh = loadedMeshes[meshIndex];
         outputMesh.reserve(gltfMesh.primitives.size());
 
-        for (std::size_t primitiveIndex = 0;
-             primitiveIndex < gltfMesh.primitives.size();
-             ++primitiveIndex) {
+        for (std::size_t primitiveIndex = 0; primitiveIndex < gltfMesh.primitives.size(); ++primitiveIndex) {
             const auto& primitive = gltfMesh.primitives[primitiveIndex];
 
             if (primitive.type != fastgltf::PrimitiveType::Triangles) {
@@ -131,6 +132,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 vertex.normal = {0.0f, 1.0f, 0.0f};
                 vertex.colour = {1.0f, 1.0f, 1.0f};
                 vertex.uv = {0.0f, 0.0f};
+                vertex.tangent = {0.f, 0.f, 0.f, 0.f};
             }
 
             fastgltf::iterateAccessorWithIndex<glm::vec3>(
@@ -141,10 +143,8 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 }
             );
 
-            if (const auto* normalAttribute = primitive.findAttribute("NORMAL");
-                normalAttribute != primitive.attributes.end()) {
-                const auto& normalAccessor =
-                    asset.accessors[normalAttribute->accessorIndex];
+            if (const auto* normalAttribute = primitive.findAttribute("NORMAL"); normalAttribute != primitive.attributes.end()) {
+                const auto& normalAccessor = asset.accessors[normalAttribute->accessorIndex];
 
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(
                     asset,
@@ -155,13 +155,28 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 );
             }
 
+            if (const auto* tangentAttribute = primitive.findAttribute("TANGENT"); tangentAttribute != primitive.attributes.end()) {
+                const auto& tangentAccessor = asset.accessors[tangentAttribute->accessorIndex];
+
+                fastgltf::iterateAccessorWithIndex<glm::vec4>(
+                    asset,
+                    tangentAccessor,
+                    [&](glm::vec4 tangent, std::size_t index) {
+                        vertices[index].tangent = tangent;
+                    }
+                );
+            }
+
             AssetID albedoTexture = INVALID_ASSET_ID;
+            AssetID normalTexture = INVALID_ASSET_ID;
+            AssetID materialTexture = INVALID_ASSET_ID;
+            float metallicFactor = 0.f;
+            float roughnessFactor = 0.f;
             std::size_t texCoordIndex = 0;
             glm::vec4 baseColorFactor{1.0f};
 
             if (primitive.materialIndex.has_value()) {
-                const auto& material =
-                    asset.materials[primitive.materialIndex.value()];
+                const auto& material = asset.materials[primitive.materialIndex.value()];
 
                 const auto& factor = material.pbrData.baseColorFactor;
                 baseColorFactor = {
@@ -171,9 +186,20 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                     factor[3]
                 };
 
+                metallicFactor = glm::clamp(
+                    material.pbrData.metallicFactor,
+                    0.0f,
+                    1.0f
+                );
+
+                roughnessFactor = glm::clamp(
+                    material.pbrData.roughnessFactor,
+                    0.0f,
+                    1.0f
+                );
+
                 if (material.pbrData.baseColorTexture.has_value()) {
-                    const auto& textureInfo =
-                        material.pbrData.baseColorTexture.value();
+                    const auto& textureInfo = material.pbrData.baseColorTexture.value();
 
                     texCoordIndex = textureInfo.texCoordIndex;
 
@@ -181,23 +207,17 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                         asset.textures[textureInfo.textureIndex];
 
                     if (texture.imageIndex.has_value()) {
-                        const auto& image =
-                            asset.images[texture.imageIndex.value()];
+                        const auto& image = asset.images[texture.imageIndex.value()];
 
                         std::visit(
                             fastgltf::visitor{
                                 [&](const fastgltf::sources::URI& source) {
                                     if (!source.uri.isLocalPath()) {
-                                        Logger::Log(
-                                            Logger::WARNING,
-                                            "Skipping non-local glTF image URI"
-                                        );
+                                        Logger::Log(Logger::WARNING,"Skipping non-local glTF image URI");
                                         return;
                                     }
 
-                                    const auto imagePath = ResolveImagePath(
-                                        normalizedPath.parent_path(),
-                                        source
+                                    const auto imagePath = ResolveImagePath(normalizedPath.parent_path(), source
                                     );
 
                                     albedoTexture = LoadTexture(imagePath, true);
@@ -206,6 +226,72 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                                     Logger::Log(
                                         Logger::WARNING,
                                         "Embedded glTF images are not supported yet; using fallback texture"
+                                    );
+                                }
+                            },
+                            image.data
+                        );
+                    }
+                }
+                if (material.normalTexture.has_value()) {
+                    const auto& normalInfo = material.normalTexture.value();
+
+                    const auto& texture = asset.textures[normalInfo.textureIndex];
+
+                    if (texture.imageIndex.has_value()) {
+                        const auto& image = asset.images[texture.imageIndex.value()];
+
+                        std::visit(
+                            fastgltf::visitor{
+                                [&](const fastgltf::sources::URI& source)
+                                {
+                                    if (!source.uri.isLocalPath()) {
+                                        return;
+                                    }
+
+                                    auto imagePath = ResolveImagePath(normalizedPath.parent_path(), source );
+
+                                    normalTexture = LoadTexture(imagePath, false);
+                                },
+
+                                [&](const auto&)
+                                {
+                                    Logger::Log(Logger::WARNING, "Embedded normal maps not supported yet");
+                                }
+                            },
+                            image.data
+                        );
+                    }
+                }
+                if (material.pbrData.metallicRoughnessTexture.has_value()) {
+                    const auto& materialInfo = material.pbrData.metallicRoughnessTexture.value();
+
+                    const auto& texture = asset.textures[materialInfo.textureIndex];
+
+                    if (texture.imageIndex.has_value()) {
+                        const auto& image = asset.images[texture.imageIndex.value()];
+
+                        std::visit(
+                            fastgltf::visitor{
+                                [&](const fastgltf::sources::URI& source)
+                                {
+                                    if (!source.uri.isLocalPath()) {
+                                        return;
+                                    }
+
+                                    auto imagePath = ResolveImagePath(
+                                        normalizedPath.parent_path(),
+                                        source
+                                    );
+
+                                    materialTexture = LoadTexture(imagePath, false);
+                                },
+
+                                [&](const auto&)
+                                {
+                                    Logger::Log(
+                                        Logger::WARNING,
+                                        "Embedded normal maps not supported yet"
                                     );
                                 }
                             },
@@ -242,8 +328,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 continue;
             }
 
-            const auto& indexAccessor =
-                asset.accessors[primitive.indicesAccessor.value()];
+            const auto& indexAccessor = asset.accessors[primitive.indicesAccessor.value()];
 
             std::vector<uint32_t> indices(indexAccessor.count);
             fastgltf::iterateAccessorWithIndex<uint32_t>(
@@ -264,7 +349,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 vk::IndexType::eUint32
             );
 
-            std::string primitiveName = gltfMesh.name;
+            std::string primitiveName(gltfMesh.name.data(), gltfMesh.name.size());
             if (primitiveName.empty()) {
                 primitiveName = "Mesh " + std::to_string(meshIndex);
             }
@@ -273,11 +358,14 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             outputMesh.push_back({
                 .mesh = std::move(mesh),
                 .albedoTexture = albedoTexture,
+                .normalTexture = normalTexture,
+                .materialTexture = materialTexture,
+                .metalicFactor = metallicFactor,
+                .roughnessFactor = roughnessFactor,
                 .name = std::move(primitiveName)
             });
         }
     }
-
     auto model = std::make_shared<ModelAsset>();
 
     if (asset.scenes.empty()) {
@@ -312,7 +400,10 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             const glm::mat4 nodeTransform = ToGlm(transform);
 
             for (const auto& primitive : loadedMeshes[meshIndex]) {
-                std::string name = node.name;
+                std::string name(
+                    node.name.data(),
+                    node.name.size()
+                );
                 if (name.empty()) {
                     name = primitive.name;
                 } else {
@@ -322,6 +413,10 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 model->primitives.push_back({
                     .mesh = primitive.mesh,
                     .albedoTexture = primitive.albedoTexture,
+                    .normalTexture = primitive.normalTexture,
+                    .materialTexture = primitive.materialTexture,
+                    .metalicFactor = primitive.metalicFactor,
+                    .roughnessFactor = primitive.roughnessFactor,
                     .transform = nodeTransform,
                     .name = std::move(name)
                 });
@@ -339,3 +434,4 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
     mModels.emplace(normalizedPath, model);
     return model;
 }
+

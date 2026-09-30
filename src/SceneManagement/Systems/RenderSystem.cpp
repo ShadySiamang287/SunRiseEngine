@@ -15,10 +15,18 @@ void RenderSystem::Render(BaseScene& scene, Renderer3D* renderer) {
 
         const auto* material = scene.Registry().try_get<MaterialComponent>(entity);
         const AssetID albedoTexture = material ? material->AlbedoTexture : INVALID_ASSET_ID;
+        const AssetID normalTexture = material ? material->NormalTexture : INVALID_ASSET_ID;
+        const AssetID materialTexture = material ? material->MaterialTexture : INVALID_ASSET_ID;
+        const float metalicFactor = material ? material->metalicFactor : 1.f;
+        const float roughnessFactor = material ? material->metalicFactor : 1.f;
         renderer->SubmitMesh(
             *mesh.mesh,
             transform.GetTransform() * mesh.LocalTransform,
-            albedoTexture
+            albedoTexture,
+            normalTexture,
+            materialTexture,
+            metalicFactor,
+            roughnessFactor
         );
     }
 

@@ -41,6 +41,11 @@ namespace SUN{
 
     struct MaterialComponent {
         AssetID AlbedoTexture = INVALID_ASSET_ID;
+        AssetID NormalTexture = INVALID_ASSET_ID;
+        AssetID MaterialTexture = INVALID_ASSET_ID;
+
+        float metalicFactor = 1.f;
+        float roughnessFactor = 1.f;
     };
 
     struct DirectionalLightComponent {

@@ -88,7 +88,6 @@ target_sources(SunriseEngine
     src/AssetManagement/ModelLoader.cpp
 
     src/SceneManagement/BaseScene.cpp
-    src/SceneManagement/BindlessTextureTestScene.cpp
     src/SceneManagement/Systems/RenderSystem.cpp
 
     src/Graphics/GraphicsContext.cpp

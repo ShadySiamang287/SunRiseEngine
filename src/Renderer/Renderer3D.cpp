@@ -43,11 +43,15 @@ void Renderer3D::BeginScene(Camera& camera) {
     mCamera = &camera;
 }
 
-void Renderer3D::SubmitMesh(const Mesh& Mesh, const glm::mat4& Transform, AssetID albedoTexture) {
+void Renderer3D::SubmitMesh(const Mesh& Mesh, const glm::mat4& Transform, AssetID albedoTexture, AssetID normalTexture, AssetID materialTexture, float metalicFactor, float roughnessFactor) {
     mRenderQueue.Submit({
         &Mesh,
         Transform,
-        mAssetManager.GetTextureIndex(albedoTexture)
+        mAssetManager.GetTextureIndex(albedoTexture),
+        mAssetManager.GetTextureIndex(normalTexture),
+        mAssetManager.GetTextureIndex(materialTexture),
+        metalicFactor,
+        roughnessFactor
     });
 }
 
