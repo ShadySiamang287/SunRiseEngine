@@ -254,6 +254,11 @@ BloomPass::GetOutputs() {
 void BloomPass::CreateImages(
     vk::Extent2D size) {
 
+    vk::Extent2D bloomSize {
+        std::max(1u, size.width / 2),
+        std::max(1u, size.height / 2)
+    };
+
     for (
         uint32_t i = 0;
         i < MAX_FRAMES_IN_FLIGHT;
@@ -262,7 +267,7 @@ void BloomPass::CreateImages(
         mBlurHorizontal[i] =
             ResourceFactory::CreateRenderImage(
                 vk::Format::eR16G16B16A16Sfloat,
-                size,
+                bloomSize,
                 vk::ImageLayout::eUndefined,
                 vk::ImageUsageFlagBits::eColorAttachment |
                     vk::ImageUsageFlagBits::eSampled,
@@ -272,7 +277,7 @@ void BloomPass::CreateImages(
         mBlurVertical[i] =
             ResourceFactory::CreateRenderImage(
                 vk::Format::eR16G16B16A16Sfloat,
-                size,
+                bloomSize,
                 vk::ImageLayout::eUndefined,
                 vk::ImageUsageFlagBits::eColorAttachment |
                     vk::ImageUsageFlagBits::eSampled,
