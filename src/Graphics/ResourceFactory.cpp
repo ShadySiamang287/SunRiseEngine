@@ -205,7 +205,7 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
 Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, bool srgb) {
     auto* context = mInstancePtr->mGraphicsContextPtr;
     
-    vk::Format format = srgb ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Uint;
+    vk::Format format = srgb ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Unorm;
 
     Texture2D texture;
     texture.mContext = context;

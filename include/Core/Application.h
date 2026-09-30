@@ -3,6 +3,7 @@
 
 #include "Graphics/GraphicsContext.h"
 #include "Graphics/ResourceFactory.h"
+#include "AssetManagement/AssetManager.h"
 #include "Renderer/Renderer3D.h"
 #include "Core/Window.h"
 #include "Core/Layer.h"
@@ -13,6 +14,7 @@ namespace SUN{
     class Window;
     class GraphicsContext;
     class ResourceFactory;
+    class AssetManager;
     class Renderer3D;
 
     class Application {
@@ -23,6 +25,14 @@ namespace SUN{
         void Run();
 
         void PushLayer(std::unique_ptr<Layer> layer);
+
+        AssetManager& GetAssetManager() {
+            return *mAssetManagerPtr;
+        }
+
+        const AssetManager& GetAssetManager() const {
+            return *mAssetManagerPtr;
+        }
     
     private:
         void HandleRendererResize();
@@ -30,6 +40,7 @@ namespace SUN{
         std::unique_ptr<Window> mWindowPtr;
         std::unique_ptr<GraphicsContext> mGraphicsContextPtr;
         std::unique_ptr<ResourceFactory> mResourceFactoryPtr;
+        std::unique_ptr<AssetManager> mAssetManagerPtr;
         std::unique_ptr<Renderer3D> mRenderer3D;
     
         protected:

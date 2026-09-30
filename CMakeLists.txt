@@ -53,11 +53,18 @@ FetchContent_Declare(
     GIT_TAG main
 )
 
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+)
+
 FetchContent_MakeAvailable(
     glm
     glfw3
     vma
     EnTT
+    stb
 )
 
 add_library(SunriseEngine STATIC)
@@ -69,6 +76,8 @@ target_sources(SunriseEngine
     src/Core/Window.cpp
     src/Core/Input.cpp
     src/Core/TimeManager.cpp
+
+    src/AssetManagement/AssetManager.cpp
 
     src/SceneManagement/BaseScene.cpp
     src/SceneManagement/Systems/RenderSystem.cpp
@@ -87,7 +96,10 @@ target_sources(SunriseEngine
     src/Renderer/PostProcessor/FXAAPass.cpp
 )
 
-target_include_directories(SunriseEngine PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(SunriseEngine
+    PUBLIC ${PROJECT_SOURCE_DIR}/include
+    PRIVATE ${stb_SOURCE_DIR}
+)
 
 target_precompile_headers(SunriseEngine
     PRIVATE

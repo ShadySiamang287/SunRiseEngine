@@ -22,6 +22,7 @@ Application::Application() {
     mGraphicsContextPtr->Init(mWindowPtr.get());
 
     mResourceFactoryPtr = std::make_unique<ResourceFactory>(mGraphicsContextPtr.get());
+    mAssetManagerPtr = std::make_unique<AssetManager>();
 
     GraphicsCommands::RegisterContext(mGraphicsContextPtr.get());
     Buffer::RegisterContext(mGraphicsContextPtr.get());
@@ -33,6 +34,8 @@ Application::~Application() {
     mGraphicsContextPtr->mDevice.waitIdle();
     mRenderer3D.reset();
     mLayerStack.Clear();
+    mAssetManagerPtr.reset();
+    mResourceFactoryPtr.reset();
     mGraphicsContextPtr->Shutdown();
     mWindowPtr->Shutdown();
     Logger::Shutdown();
