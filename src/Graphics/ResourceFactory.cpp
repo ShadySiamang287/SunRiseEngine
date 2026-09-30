@@ -440,28 +440,27 @@ Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, u
             const int32_t nextWidth = std::max(mipWidth / 2, 1);
             const int32_t nextHeight = std::max(mipHeight / 2, 1);
 
-            vk::ImageBlit blit{
-                .srcSubresource = {
-                    .aspectMask = vk::ImageAspectFlagBits::eColor,
-                    .mipLevel = mip - 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-                },
-                .srcOffsets = {
-                    vk::Offset3D{0, 0, 0},
-                    vk::Offset3D{mipWidth, mipHeight, 1}
-                },
-                .dstSubresource = {
-                    .aspectMask = vk::ImageAspectFlagBits::eColor,
-                    .mipLevel = mip,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-                },
-                .dstOffsets = {
-                    vk::Offset3D{0, 0, 0},
-                    vk::Offset3D{nextWidth, nextHeight, 1}
-                }
+            vk::ImageBlit blit{};
+
+            blit.srcSubresource = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .mipLevel = mip - 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
             };
+
+            blit.srcOffsets[0] = vk::Offset3D{0, 0, 0};
+            blit.srcOffsets[1] = vk::Offset3D{mipWidth, mipHeight, 1};
+
+            blit.dstSubresource = {
+                .aspectMask = vk::ImageAspectFlagBits::eColor,
+                .mipLevel = mip,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            };
+
+            blit.dstOffsets[0] = vk::Offset3D{0, 0, 0};
+            blit.dstOffsets[1] = vk::Offset3D{nextWidth, nextHeight, 1};
 
             cmd.blitImage(
                 texture.mImage.image,
