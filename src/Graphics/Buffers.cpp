@@ -205,12 +205,20 @@ void ShaderBuffer::Upload(const void* data, size_t size, size_t offset) {
     mBuffers[mContextPtr->mFrameIndex].Upload(data, size, offset);
 }
 
+void ShaderBuffer::Upload(uint32_t frameIndex, const void* data, size_t size, size_t offset) {
+    mBuffers[frameIndex].Upload(data, size, offset);
+}
+
 uint32_t ShaderBuffer::GetBindlessIndex() const {
     return mBindlessIndices[mContextPtr->mFrameIndex];
 }
 
 vk::Buffer ShaderBuffer::GetHandle() const {
     return mBuffers[mContextPtr->mFrameIndex].GetHandle();
+}
+
+vk::Buffer ShaderBuffer::GetHandle(uint32_t frameIndex) const {
+    return mBuffers[frameIndex].GetHandle();
 }
 
 vk::DeviceAddress ShaderBuffer::GetDeviceAddress() const {

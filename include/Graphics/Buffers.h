@@ -70,9 +70,11 @@ namespace SUN{
         void Destroy();
 
         void Upload(const void* data, size_t size, size_t offset = 0);
+        void Upload(uint32_t frameIndex, const void* data, size_t size, size_t offset = 0);
 
         uint32_t GetBindlessIndex() const;
         vk::Buffer GetHandle() const;
+        vk::Buffer GetHandle(uint32_t frameIndex) const;
         vk::DeviceAddress GetDeviceAddress() const;
     private:
         std::array<Buffer, MAX_FRAMES_IN_FLIGHT> mBuffers;

@@ -28,11 +28,11 @@ Renderer3D::Renderer3D(AssetManager& assetManager)
     mDeferredRenderer =
         std::make_unique<DeferredRenderer>(mAssetManager);
 
-    mSSAOPass =
-        std::make_unique<SSAOPass>(mDeferredRenderer->GetGBuffers(), mSampler);
+    mSSAOPass = std::make_unique<SSAOPass>(mDeferredRenderer->GetGBuffers(), mSampler);
+    mSSAOBlurPass = std::make_unique<SSAOBlurPass>(mSSAOPass->GetOutputs(), mSampler);
 
     mLightingPass =
-        std::make_unique<LightingPass>(mDeferredRenderer->GetGBuffers(), mSSAOPass->GetOutputs(), mSampler);
+        std::make_unique<LightingPass>(mDeferredRenderer->GetGBuffers(), mSSAOBlurPass->GetOutputs(), mSampler);
 
     mBloomPass =
         std::make_unique<BloomPass>(mLightingPass->GetBrightnessImages(), mSampler);
@@ -96,6 +96,7 @@ void Renderer3D::EndScene(RenderContext& context) {
     mDeferredRenderer->Execute(context, pushConstants);
 
     mSSAOPass->Execute(context, pushConstants);
+    mSSAOBlurPass->Execute(context);
 
     mLightingPass->Execute(context, pushConstants);
 
@@ -118,6 +119,7 @@ void Renderer3D::Resize(vk::Extent2D newSize) {
     mDeferredRenderer->Resize(newSize);
 
     mSSAOPass->Resize(newSize);
+    mSSAOBlurPass->Resize(newSize);
 
     mLightingPass->Resize(newSize);
 

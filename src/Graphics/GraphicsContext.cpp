@@ -453,7 +453,8 @@ void GraphicsContext::CreateSwapchainSyncObjects() {
 void GraphicsContext::CreateDesciptorPool(){
     std::vector<vk::DescriptorPoolSize> poolSizes = {
         { vk::DescriptorType::eSampledImage, 4096 },
-        { vk::DescriptorType::eSampler,      64 }
+        { vk::DescriptorType::eSampler,      64 },
+        { vk::DescriptorType::eUniformBuffer, 64 }
     };
 
     vk::DescriptorPoolCreateInfo poolInfo {
