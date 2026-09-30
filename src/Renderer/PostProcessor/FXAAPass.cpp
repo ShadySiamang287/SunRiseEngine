@@ -5,21 +5,16 @@
 
 using namespace SUN;
 
-FXAAPass::FXAAPass(
-    std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& toneMappingImages)
+FXAAPass::FXAAPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& toneMappingImages)
     : mToneMappingImages(toneMappingImages) {
 
     SamplerConfig samplerConfig {
         .minFilter = vk::Filter::eLinear,
         .magFilter = vk::Filter::eLinear,
-        .mipmapMode =
-            vk::SamplerMipmapMode::eNearest,
-        .addressModeU =
-            vk::SamplerAddressMode::eClampToEdge,
-        .addressModeV =
-            vk::SamplerAddressMode::eClampToEdge,
-        .addressModeW =
-            vk::SamplerAddressMode::eClampToEdge,
+        .mipmapMode = vk::SamplerMipmapMode::eNearest,
+        .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeW = vk::SamplerAddressMode::eClampToEdge,
         .minLod = 0.0f,
         .maxLod = 0.0f,
         .mipLodBias = 0.0f,
@@ -27,55 +22,40 @@ FXAAPass::FXAAPass(
         .maxAnisotropy = 1.0f,
         .compare = false,
         .compareOp = vk::CompareOp::eAlways,
-        .borderColor =
-            vk::BorderColor::eFloatOpaqueBlack
+        .borderColor = vk::BorderColor::eFloatOpaqueBlack
     };
 
     mSampler =
-        ResourceFactory::CreateSampler(
-            samplerConfig
-        );
+        ResourceFactory::CreateSampler(samplerConfig);
 
-    std::array<vk::DescriptorSetLayoutBinding, 2>
-        bindings;
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings;
 
     bindings[0] = {
         .binding = 0,
-        .descriptorType =
-            vk::DescriptorType::eSampledImage,
+        .descriptorType = vk::DescriptorType::eSampledImage,
         .descriptorCount = 1,
-        .stageFlags =
-            vk::ShaderStageFlagBits::eFragment
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
     bindings[1] = {
         .binding = 1,
-        .descriptorType =
-            vk::DescriptorType::eSampler,
+        .descriptorType = vk::DescriptorType::eSampler,
         .descriptorCount = 1,
-        .stageFlags =
-            vk::ShaderStageFlagBits::eFragment
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
     };
 
     mDescriptors =
-        ResourceFactory::CreateDescriptorResources(
-            bindings
-        );
+        ResourceFactory::CreateDescriptorResources(bindings);
 
     mLayout =
-        ResourceFactory::CreatePipelineLayout(
-            vk::ShaderStageFlagBits::eFragment,
-            sizeof(PushConstants),
-            &mDescriptors
-        );
+        ResourceFactory::CreatePipelineLayout(vk::ShaderStageFlagBits::eFragment, sizeof(PushConstants), &mDescriptors);
 
     PipelineConfig pipelineConfig {
         .vertexFile = "./shaders/lightVert.spv",
         .vertexName = "lightVert",
         .fragFile = "./shaders/FXAA.spv",
         .fragName = "FXAA",
-        .primitiveTopology =
-            vk::PrimitiveTopology::eTriangleList,
+        .primitiveTopology = vk::PrimitiveTopology::eTriangleList,
         .colorAttachmentFormats = {
             GraphicsCommands::GetSwapchainFormat()
         },
@@ -86,17 +66,12 @@ FXAAPass::FXAAPass(
     };
 
     mPipeline =
-        ResourceFactory::CreatePipeline(
-            pipelineConfig,
-            mLayout,
-            "FXAA Pipeline"
-        );
+        ResourceFactory::CreatePipeline(pipelineConfig, mLayout, "FXAA Pipeline");
 
     UpdateDescriptors();
 }
 
-void FXAAPass::Execute(
-    const PostProcessContext& context) {
+void FXAAPass::Execute(const PostProcessContext& context) {
 
     const uint32_t frameIndex =
         context.frameIndex;
@@ -124,14 +99,10 @@ void FXAAPass::Execute(
     );
 
     vk::RenderingAttachmentInfo swapchainAttachment {
-        .imageView =
-            GraphicsCommands::GetCurrentSwapchainImageView(),
-        .imageLayout =
-            vk::ImageLayout::eColorAttachmentOptimal,
-        .loadOp =
-            vk::AttachmentLoadOp::eClear,
-        .storeOp =
-            vk::AttachmentStoreOp::eStore,
+        .imageView = GraphicsCommands::GetCurrentSwapchainImageView(),
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
         .clearValue = vk::ClearValue {
             vk::ClearColorValue {
                 0.0f,
@@ -152,29 +123,19 @@ void FXAAPass::Execute(
         },
         .layerCount = 1,
         .colorAttachmentCount = 1,
-        .pColorAttachments =
-            &swapchainAttachment
+        .pColorAttachments = &swapchainAttachment
     };
 
-    GraphicsCommands::BeginRendering(
-        renderingInfo
-    );
+    GraphicsCommands::BeginRendering(renderingInfo);
 
-    GraphicsCommands::SetViewportAndScissor(
-        extent
-    );
+    GraphicsCommands::SetViewportAndScissor(extent);
 
     GraphicsCommands::SetDepthTestEnable(false);
     GraphicsCommands::SetDepthWriteEnable(false);
 
-    GraphicsCommands::BindPipeline(
-        mPipeline
-    );
+    GraphicsCommands::BindPipeline(mPipeline);
 
-    GraphicsCommands::BindDescriptorSets(
-        mLayout,
-        mDescriptors
-    );
+    GraphicsCommands::BindDescriptorSets(mLayout, mDescriptors);
 
     GraphicsCommands::DrawFullScreenTriangle();
     GraphicsCommands::EndRendering();
@@ -182,8 +143,7 @@ void FXAAPass::Execute(
     GraphicsCommands::EndLabel();
 }
 
-void FXAAPass::Resize(
-    vk::Extent2D) {
+void FXAAPass::Resize(vk::Extent2D) {
 
     UpdateDescriptors();
 }
@@ -193,45 +153,31 @@ void FXAAPass::UpdateDescriptors() {
         .sampler = *mSampler
     };
 
-    for (
-        uint32_t frameIndex = 0;
-        frameIndex < MAX_FRAMES_IN_FLIGHT;
-        ++frameIndex
-    ) {
+    for (uint32_t frameIndex = 0; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
         vk::DescriptorImageInfo finalImageInfo {
             .sampler = nullptr,
-            .imageView =
-                *mToneMappingImages[frameIndex].image.view,
-            .imageLayout =
-                vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView = *mToneMappingImages[frameIndex].image.view,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         std::array<vk::WriteDescriptorSet, 2>
             writes {
                 vk::WriteDescriptorSet {
-                    .dstSet =
-                        *mDescriptors.sets[frameIndex],
+                    .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 0,
                     .descriptorCount = 1,
-                    .descriptorType =
-                        vk::DescriptorType::eSampledImage,
-                    .pImageInfo =
-                        &finalImageInfo
+                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .pImageInfo = &finalImageInfo
                 },
                 vk::WriteDescriptorSet {
-                    .dstSet =
-                        *mDescriptors.sets[frameIndex],
+                    .dstSet = *mDescriptors.sets[frameIndex],
                     .dstBinding = 1,
                     .descriptorCount = 1,
-                    .descriptorType =
-                        vk::DescriptorType::eSampler,
-                    .pImageInfo =
-                        &samplerInfo
+                    .descriptorType = vk::DescriptorType::eSampler,
+                    .pImageInfo = &samplerInfo
                 }
             };
 
-        GraphicsCommands::WriteDescriptors(
-            writes
-        );
+        GraphicsCommands::WriteDescriptors(writes);
     }
 }

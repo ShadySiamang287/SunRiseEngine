@@ -15,13 +15,9 @@ namespace SUN {
             vk::raii::Sampler& sampler
         );
 
-        void Execute(
-            const PostProcessContext& context
-        ) override;
+        void Execute(const PostProcessContext& context) override;
 
-        void Resize(
-            vk::Extent2D newSize
-        ) override;
+        void Resize(vk::Extent2D newSize) override;
 
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetOutputs();
 
@@ -35,8 +31,7 @@ namespace SUN {
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>&
             mHDRImages;
 
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>
-            mToneMappedImages;
+        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mToneMappedImages;
 
         DescriptorResources mDescriptors;
 

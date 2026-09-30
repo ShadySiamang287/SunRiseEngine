@@ -9,17 +9,11 @@
 namespace SUN {
     class FXAAPass : public PostProcessPass {
     public:
-        explicit FXAAPass(
-            std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& toneMappingImages
-        );
+        explicit FXAAPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& toneMappingImages);
 
-        void Execute(
-            const PostProcessContext& context
-        ) override;
+        void Execute(const PostProcessContext& context) override;
 
-        void Resize(
-            vk::Extent2D newSize
-        ) override;
+        void Resize(vk::Extent2D newSize) override;
 
     private:
         void UpdateDescriptors();

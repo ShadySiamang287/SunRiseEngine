@@ -9,18 +9,11 @@
 namespace SUN {
     class BloomPass : public PostProcessPass {
     public:
-        BloomPass(
-            std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& brightnessImages,
-            vk::raii::Sampler& sampler
-        );
+        BloomPass(std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& brightnessImages, vk::raii::Sampler& sampler);
 
-        void Execute(
-            const PostProcessContext& context
-        ) override;
+        void Execute(const PostProcessContext& context) override;
 
-        void Resize(
-            vk::Extent2D newSize
-        ) override;
+        void Resize(vk::Extent2D newSize) override;
 
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetOutputs();
 
@@ -31,11 +24,9 @@ namespace SUN {
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>&
             mBrightnessImages;
 
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>
-            mBlurHorizontal;
+        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mBlurHorizontal;
 
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>
-            mBlurVertical;
+        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mBlurVertical;
 
         DescriptorResources mHorizontalDescriptors;
         DescriptorResources mVerticalDescriptors;
