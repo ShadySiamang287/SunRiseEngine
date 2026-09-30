@@ -1,8 +1,8 @@
 #pragma once
 
+#include "Renderer/GBuffer.h"
 #include "Renderer/RenderingStructs.h"
 #include "Renderer/RenderQueue.h"
-#include "Renderer/PostProcessor/PostProcessorPass.h"
 
 #include <span>
 
@@ -11,19 +11,9 @@ namespace SUN {
 
     class DeferredRenderer {
     public:
-        DeferredRenderer(vk::raii::Sampler& sampler, AssetManager& assetManager);
+        explicit DeferredRenderer(AssetManager& assetManager);
         ~DeferredRenderer();
 
-        void Render(RenderContext& context, const RenderQueue& renderQueue, const Camera* cam,
-            std::span<const GPUDirectionalLight> directionalLights,
-            std::span<const GPUPointLight> pointLights);
-
-        void Resize(vk::Extent2D newSize);
-
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetBrightnessImages();
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& GetHDRImages();
-
-    private:
         PushConstants PrepareFrame(
             const RenderQueue& renderQueue,
             const Camera* cam,
@@ -31,25 +21,25 @@ namespace SUN {
             std::span<const GPUPointLight> pointLights
         );
 
-        void RenderGBufferPass(const PushConstants& pushConstants);
-        void RenderLightingPass(RenderContext& context, const PushConstants& pushConstants);
+        void Execute(
+            const RenderContext& context,
+            const PushConstants& pushConstants
+        );
 
-        void DestroyImages();
-        void CreateImages(vk::Extent2D extent);
+        void Resize(vk::Extent2D newSize);
 
+        std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& GetGBuffers();
+
+    private:
+        void CreateGBuffers(vk::Extent2D extent);
+        void DestroyGBuffers();
         void BuildBatches(const RenderQueue& renderQueue);
 
-        DescriptorResources mLightingDescriptors; 
-
-        vk::raii::Pipeline mGbufferPipeline = nullptr;
-        vk::raii::Pipeline mLightingPipeline = nullptr;
+        vk::raii::Pipeline mPipeline = nullptr;
         vk::raii::PipelineLayout mPipelineLayout = nullptr;
-        vk::raii::PipelineLayout mLightingLayout = nullptr;
 
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mHDRImages;
-        std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mBrightnessImages;
+        std::array<GBuffer, MAX_FRAMES_IN_FLIGHT> mGBuffers;
 
-        vk::raii::Sampler& mImageSampler;
         AssetManager& mAssetManager;
 
         ShaderBuffer mFrameDataBuffer;

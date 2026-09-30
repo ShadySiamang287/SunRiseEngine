@@ -99,6 +99,7 @@ target_sources(SunriseEngine
 
     src/Renderer/Renderer3D.cpp
     src/Renderer/DeferredRenderer.cpp
+    src/Renderer/LightingPass.cpp
     src/Renderer/PostProcessor/BloomPass.cpp
     src/Renderer/PostProcessor/ToneMappingPass.cpp
     src/Renderer/PostProcessor/FXAAPass.cpp

@@ -22,9 +22,6 @@ namespace SUN {
         static void DrawFullScreenTriangle();
         static void EndDraw();
 
-        static void BeginGBufferPass();
-        static void EndGBufferPass();
-
         static void PushBloomConstants(vk::raii::PipelineLayout& layout, bool horizontal);
 
         static void BeginRendering(vk::RenderingInfo& info);
@@ -43,7 +40,6 @@ namespace SUN {
         static void SetDepthTestEnable(bool state);
         static void SetDepthWriteEnable(bool state);
 
-        static void WriteLightingDescriptorSets(const DescriptorResources& resources, vk::raii::Sampler& sampler);
         static void WriteDescriptors(const std::span<vk::WriteDescriptorSet> writes);
 
         static vk::Format GetSwapchainFormat();

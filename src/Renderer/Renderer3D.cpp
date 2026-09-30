@@ -27,9 +27,24 @@ Renderer3D::Renderer3D(AssetManager& assetManager) : mAssetManager(assetManager)
     mSampler = ResourceFactory::CreateSampler(gBufferSamplerConfig);
 
 
-    mDeferredRenderer = std::make_unique<DeferredRenderer>(mSampler, mAssetManager);
-    mBloomPass = std::make_unique<BloomPass>(mDeferredRenderer->GetBrightnessImages(), mSampler);
-    mToneMappingPass = std::make_unique<ToneMappingPass>(mBloomPass->GetOutput(0), mDeferredRenderer->GetHDRImages(), mSampler);
+    mDeferredRenderer =
+        std::make_unique<DeferredRenderer>(mAssetManager);
+
+    mLightingPass = std::make_unique<LightingPass>(
+        mDeferredRenderer->GetGBuffers(),
+        mSampler
+    );
+
+    mBloomPass = std::make_unique<BloomPass>(
+        mLightingPass->GetBrightnessImages(),
+        mSampler
+    );
+
+    mToneMappingPass = std::make_unique<ToneMappingPass>(
+        mBloomPass->GetOutput(0),
+        mLightingPass->GetHDRImages(),
+        mSampler
+    );
     mFXAAPass = std::make_unique<FXAAPass>(mToneMappingPass->GetOutput(0));
 }
 
@@ -59,19 +74,39 @@ void Renderer3D::EndScene(RenderContext& context) {
     PostProcessContext postProcessContext {
         .frameIndex = context.frameIndex
     };
+
     GraphicsCommands::BeginDraw();
-    mDeferredRenderer->Render(context, mRenderQueue, mCamera, mDirectionalLights, mPointLights);
-   // GraphicsCommands::BeginLabel("Post Processing", {1.f, 0.5f, 0.75f, 1.f});
+
+    const PushConstants pushConstants =
+        mDeferredRenderer->PrepareFrame(
+            mRenderQueue,
+            mCamera,
+            mDirectionalLights,
+            mPointLights
+        );
+
+    mDeferredRenderer->Execute(
+        context,
+        pushConstants
+    );
+
+    mLightingPass->Execute(
+        context,
+        pushConstants
+    );
+
     mBloomPass->Execute(postProcessContext);
     mToneMappingPass->Execute(postProcessContext);
     mFXAAPass->Execute(postProcessContext);
-    //GraphicsCommands::EndLabel();
+
     GraphicsCommands::EndDraw();
+
     mCamera = nullptr;
 }
 
 void Renderer3D::Resize(vk::Extent2D newSize) {
     mDeferredRenderer->Resize(newSize);
+    mLightingPass->Resize(newSize);
     mBloomPass->Resize(newSize);
     mToneMappingPass->Resize(newSize);
     mFXAAPass->Resize(newSize);

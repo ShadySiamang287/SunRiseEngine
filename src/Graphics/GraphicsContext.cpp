@@ -51,8 +51,6 @@ void GraphicsContext::Init(Window* window){
     CreateFrameSyncObjects();
     CreateSwapchainSyncObjects();
 
-    CreateGBuffers();
-
     CreateDesciptorPool();
 }
 
@@ -368,13 +366,10 @@ void GraphicsContext::RecreateSwapChain() {
 
     CreateSwapchainSyncObjects();
 
-    CreateGBuffers();
     ++mSwapchainGeneration;
 }
 
 void GraphicsContext::CleanupSwapChain() {
-
-    DestroyGBuffers();
 
     mRenderFinishedSemaphores.clear();
 
@@ -452,150 +447,6 @@ void GraphicsContext::CreateSwapchainSyncObjects() {
             mDevice,
             vk::SemaphoreCreateInfo{}
         );
-    }
-}
-
-void GraphicsContext::CreateGBuffers() {
-    const vk::ImageCreateInfo albedo {
-        .sType = vk::StructureType::eImageCreateInfo,
-        .imageType = vk::ImageType::e2D,
-        .format = vk::Format::eR16G16B16A16Sfloat,
-        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
-    };
-
-    const vk::ImageCreateInfo normal {
-        .sType = vk::StructureType::eImageCreateInfo,
-        .imageType = vk::ImageType::e2D,
-        .format = vk::Format::eR16G16B16A16Sfloat,
-        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled
-    };
-
-    const vk::ImageCreateInfo depth {
-        .sType = vk::StructureType::eImageCreateInfo,
-        .imageType = vk::ImageType::e2D,
-        .format = vk::Format::eD32Sfloat,
-        .extent = {mSwapChainExtent.width, mSwapChainExtent.height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled
-    };
-
-    VmaAllocationCreateInfo allocInfo {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
-    };
-
-    for (auto& frame : mFrames) {
-        GBuffer& buffer = frame.gbuffer;
-        VkImage tempAlbedo;
-        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&albedo), &allocInfo, &tempAlbedo, &buffer.Albedo.allocation, nullptr);
-        buffer.Albedo.image = tempAlbedo;
-
-        TransitionImageLayoutImmediate(
-            buffer.Albedo.image,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        );
-
-        vk::ImageViewCreateInfo albedoView{
-            .image = buffer.Albedo.image,
-            .viewType = vk::ImageViewType::e2D,
-            .format = vk::Format::eR16G16B16A16Sfloat,
-            .subresourceRange = {
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-        buffer.Albedo.view = vk::raii::ImageView(mDevice, albedoView);
-
-        VkImage tempNormal;
-        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&normal), &allocInfo, &tempNormal, &buffer.Normal.allocation, nullptr);
-        buffer.Normal.image = tempNormal;
-
-        TransitionImageLayoutImmediate(
-            buffer.Normal.image,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        );
-
-        vk::ImageViewCreateInfo normalView{
-            .image = buffer.Normal.image,
-            .viewType = vk::ImageViewType::e2D,
-            .format = vk::Format::eR16G16B16A16Sfloat,
-            .subresourceRange = {
-                .aspectMask = vk::ImageAspectFlagBits::eColor,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-        buffer.Normal.view = vk::raii::ImageView(mDevice, normalView);
-
-        VkImage tempDepth;
-        vmaCreateImage(mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&depth), &allocInfo, &tempDepth, &buffer.Depth.allocation, nullptr);
-        buffer.Depth.image = tempDepth;
-
-        TransitionImageLayoutImmediate(
-            buffer.Depth.image,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            {},                                            // no prior access to wait on
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eTopOfPipe,
-            vk::PipelineStageFlagBits2::eFragmentShader,
-            vk::ImageAspectFlagBits::eDepth
-        );
-
-
-        vk::ImageViewCreateInfo depthView{
-            .image = buffer.Depth.image,
-            .viewType = vk::ImageViewType::e2D,
-            .format = vk::Format::eD32Sfloat,
-            .subresourceRange = {
-                .aspectMask = vk::ImageAspectFlagBits::eDepth,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-        buffer.Depth.view = vk::raii::ImageView(mDevice, depthView);
-        
-    }
-}
-
-void GraphicsContext::DestroyGBuffers() {
-    for (auto& frame : mFrames){
-        GBuffer& buffer = frame.gbuffer;
-        buffer.Albedo.view = nullptr;
-        buffer.Normal.view = nullptr;
-        buffer.Depth.view = nullptr;
-        vmaDestroyImage(mAllocator, buffer.Albedo.image, buffer.Albedo.allocation);
-        vmaDestroyImage(mAllocator, buffer.Normal.image, buffer.Normal.allocation);
-        vmaDestroyImage(mAllocator, buffer.Depth.image, buffer.Depth.allocation);
     }
 }
 

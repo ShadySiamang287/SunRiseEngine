@@ -548,15 +548,39 @@ RenderImage ResourceFactory::CreateRenderImage(vk::Format format, vk::Extent2D e
     vmaCreateImage(mInstancePtr->mGraphicsContextPtr->mAllocator, reinterpret_cast<const VkImageCreateInfo*>(&createInfo), &allocInfo, &tempImage, &tempRenderImage.image.allocation, nullptr);
     tempRenderImage.image.image = tempImage;
 
-    mInstancePtr->mGraphicsContextPtr->TransitionImageLayoutImmediate(
-        tempRenderImage.image.image,
-        vk::ImageLayout::eUndefined,
-        vk::ImageLayout::eShaderReadOnlyOptimal,
-        {},
-        vk::AccessFlagBits2::eShaderRead,
-        vk::PipelineStageFlagBits2::eTopOfPipe,
-        vk::PipelineStageFlagBits2::eFragmentShader
-    );
+    if (layout != vk::ImageLayout::eUndefined) {
+        vk::AccessFlags2 dstAccess{};
+        vk::PipelineStageFlags2 dstStage = vk::PipelineStageFlagBits2::eTopOfPipe;
+
+        switch (layout) {
+            case vk::ImageLayout::eShaderReadOnlyOptimal:
+                dstAccess = vk::AccessFlagBits2::eShaderRead;
+                dstStage = vk::PipelineStageFlagBits2::eFragmentShader;
+                break;
+            case vk::ImageLayout::eColorAttachmentOptimal:
+                dstAccess = vk::AccessFlagBits2::eColorAttachmentWrite;
+                dstStage = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
+                break;
+            case vk::ImageLayout::eDepthAttachmentOptimal:
+                dstAccess = vk::AccessFlagBits2::eDepthStencilAttachmentWrite;
+                dstStage = vk::PipelineStageFlagBits2::eEarlyFragmentTests |
+                           vk::PipelineStageFlagBits2::eLateFragmentTests;
+                break;
+            default:
+                break;
+        }
+
+        mInstancePtr->mGraphicsContextPtr->TransitionImageLayoutImmediate(
+            tempRenderImage.image.image,
+            vk::ImageLayout::eUndefined,
+            layout,
+            {},
+            dstAccess,
+            vk::PipelineStageFlagBits2::eTopOfPipe,
+            dstStage,
+            aspectFlags
+        );
+    }
     vk::ImageViewCreateInfo imageView {
         .image = tempRenderImage.image.image,
         .viewType = vk::ImageViewType::e2D,

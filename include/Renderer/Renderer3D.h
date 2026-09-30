@@ -3,6 +3,7 @@
 #include "Renderer/RenderingStructs.h"
 #include "Renderer/RenderQueue.h"
 #include "Renderer/DeferredRenderer.h"
+#include "Renderer/LightingPass.h"
 
 #include "Renderer/PostProcessor/BloomPass.h"
 #include "Renderer/PostProcessor/ToneMappingPass.h"
@@ -42,16 +43,19 @@ namespace SUN {
     private:
         AssetManager& mAssetManager;
 
+        vk::raii::Sampler mSampler = nullptr;
+
+        std::unique_ptr<DeferredRenderer> mDeferredRenderer;
+        std::unique_ptr<LightingPass> mLightingPass;
+
         std::unique_ptr<BloomPass> mBloomPass;
         std::unique_ptr<ToneMappingPass> mToneMappingPass;
         std::unique_ptr<FXAAPass> mFXAAPass;
 
         RenderQueue mRenderQueue;
         const Camera* mCamera = nullptr;
-        std::unique_ptr<DeferredRenderer> mDeferredRenderer;
 
         std::vector<GPUDirectionalLight> mDirectionalLights;
         std::vector<GPUPointLight> mPointLights;
-        vk::raii::Sampler mSampler = nullptr;
     };
 }

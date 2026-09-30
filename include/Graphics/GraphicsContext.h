@@ -21,15 +21,8 @@ namespace SUN{
         vk::raii::Fence fence = nullptr;
     };
 
-    struct GBuffer{
-        AllocatedImage Albedo;
-        AllocatedImage Normal;
-        AllocatedImage Depth;
-    };
-
     struct FrameResources{
         vk::raii::CommandBuffer commandBuffer = nullptr;
-        GBuffer gbuffer;
 
         vk::raii::Semaphore imageAvailable = nullptr;
         vk::raii::Fence inFlightFence = nullptr;
@@ -83,10 +76,6 @@ namespace SUN{
         void CreateFrameSyncObjects();
         void CreateSwapchainSyncObjects();
         
-        
-        void CreateGBuffers();
-        void DestroyGBuffers();
-
         void CreateDesciptorPool();
 
 
