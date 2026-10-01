@@ -47,6 +47,39 @@ namespace {
         bool operator==(const CanonicalGeometry&) const = default;
     };
 
+    struct DiagnosticCorner {
+        std::array<uint32_t, 3> position{};
+        std::array<uint32_t, 3> normal{};
+        std::array<uint32_t, 2> uv{};
+        std::array<uint32_t, 4> tangent{};
+    };
+
+    struct DiagnosticTriangle {
+        std::array<DiagnosticCorner, 3> corners{};
+    };
+
+    struct PrimitiveDiagnostic {
+        std::string name;
+        std::size_t vertexCount = 0;
+        std::size_t indexCount = 0;
+        uint64_t positionTopologyHash = 0;
+        std::vector<DiagnosticTriangle> triangles;
+    };
+
+    struct AttributeComparison {
+        bool positionTopologySame = true;
+        bool normalsSame = true;
+        bool uvsSame = true;
+        bool tangentsSame = true;
+
+        std::size_t normalTriangle = 0;
+        std::size_t normalCorner = 0;
+        std::size_t uvTriangle = 0;
+        std::size_t uvCorner = 0;
+        std::size_t tangentTriangle = 0;
+        std::size_t tangentCorner = 0;
+    };
+
     struct CachedGeometry {
         std::shared_ptr<Mesh> mesh;
         CanonicalGeometry geometry;
@@ -211,6 +244,301 @@ namespace {
         return canonical;
     }
 
+    bool PositionLess(
+        const DiagnosticCorner& lhs,
+        const DiagnosticCorner& rhs
+    ) {
+        return lhs.position < rhs.position;
+    }
+
+    bool TrianglePositionLess(
+        const DiagnosticTriangle& lhs,
+        const DiagnosticTriangle& rhs
+    ) {
+        for (std::size_t corner = 0; corner < 3; ++corner) {
+            if (lhs.corners[corner].position <
+                rhs.corners[corner].position) {
+                return true;
+            }
+
+            if (rhs.corners[corner].position <
+                lhs.corners[corner].position) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    DiagnosticTriangle RotateDiagnosticTriangle(
+        const DiagnosticTriangle& triangle,
+        std::size_t rotation
+    ) {
+        DiagnosticTriangle result;
+
+        for (std::size_t corner = 0; corner < 3; ++corner) {
+            result.corners[corner] =
+                triangle.corners[(corner + rotation) % 3];
+        }
+
+        return result;
+    }
+
+    PrimitiveDiagnostic BuildPrimitiveDiagnostic(
+        std::string name,
+        const std::vector<Vertex>& vertices,
+        const std::vector<uint32_t>& indices
+    ) {
+        PrimitiveDiagnostic diagnostic;
+        diagnostic.name = std::move(name);
+        diagnostic.vertexCount = vertices.size();
+        diagnostic.indexCount = indices.size();
+        diagnostic.triangles.reserve(indices.size() / 3);
+
+        const glm::vec3 origin =
+            FindGeometryOrigin(vertices);
+
+        auto makeCorner =
+            [&](uint32_t vertexIndex) {
+                const Vertex& vertex =
+                    vertices[vertexIndex];
+
+                const glm::vec3 relativePosition =
+                    vertex.pos - origin;
+
+                return DiagnosticCorner {
+                    .position = {
+                        CanonicalFloatBits(relativePosition.x),
+                        CanonicalFloatBits(relativePosition.y),
+                        CanonicalFloatBits(relativePosition.z)
+                    },
+                    .normal = {
+                        CanonicalFloatBits(vertex.normal.x),
+                        CanonicalFloatBits(vertex.normal.y),
+                        CanonicalFloatBits(vertex.normal.z)
+                    },
+                    .uv = {
+                        CanonicalFloatBits(vertex.uv.x),
+                        CanonicalFloatBits(vertex.uv.y)
+                    },
+                    .tangent = {
+                        CanonicalFloatBits(vertex.tangent.x),
+                        CanonicalFloatBits(vertex.tangent.y),
+                        CanonicalFloatBits(vertex.tangent.z),
+                        CanonicalFloatBits(vertex.tangent.w)
+                    }
+                };
+            };
+
+        for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
+            DiagnosticTriangle triangle {
+                .corners = {
+                    makeCorner(indices[i]),
+                    makeCorner(indices[i + 1]),
+                    makeCorner(indices[i + 2])
+                }
+            };
+
+            DiagnosticTriangle best = triangle;
+
+            for (std::size_t rotation = 1; rotation < 3; ++rotation) {
+                DiagnosticTriangle candidate =
+                    RotateDiagnosticTriangle(
+                        triangle,
+                        rotation
+                    );
+
+                if (TrianglePositionLess(candidate, best)) {
+                    best = std::move(candidate);
+                }
+            }
+
+            diagnostic.triangles.push_back(
+                std::move(best)
+            );
+        }
+
+        std::sort(
+            diagnostic.triangles.begin(),
+            diagnostic.triangles.end(),
+            TrianglePositionLess
+        );
+
+        uint64_t hash = FNV_OFFSET_BASIS;
+
+        HashUint64(
+            hash,
+            static_cast<uint64_t>(diagnostic.vertexCount)
+        );
+
+        HashUint64(
+            hash,
+            static_cast<uint64_t>(diagnostic.indexCount)
+        );
+
+        for (const DiagnosticTriangle& triangle :
+             diagnostic.triangles) {
+            for (const DiagnosticCorner& corner :
+                 triangle.corners) {
+                for (uint32_t value : corner.position) {
+                    HashUint32(hash, value);
+                }
+            }
+        }
+
+        diagnostic.positionTopologyHash = hash;
+        return diagnostic;
+    }
+
+    AttributeComparison ComparePrimitiveAttributes(
+        const PrimitiveDiagnostic& lhs,
+        const PrimitiveDiagnostic& rhs
+    ) {
+        AttributeComparison comparison;
+
+        if (lhs.vertexCount != rhs.vertexCount ||
+            lhs.indexCount != rhs.indexCount ||
+            lhs.triangles.size() != rhs.triangles.size()) {
+            comparison.positionTopologySame = false;
+            return comparison;
+        }
+
+        for (std::size_t triangle = 0;
+             triangle < lhs.triangles.size();
+             ++triangle) {
+            for (std::size_t corner = 0;
+                 corner < 3;
+                 ++corner) {
+                const DiagnosticCorner& a =
+                    lhs.triangles[triangle].corners[corner];
+
+                const DiagnosticCorner& b =
+                    rhs.triangles[triangle].corners[corner];
+
+                if (a.position != b.position) {
+                    comparison.positionTopologySame = false;
+                    return comparison;
+                }
+
+                if (comparison.normalsSame &&
+                    a.normal != b.normal) {
+                    comparison.normalsSame = false;
+                    comparison.normalTriangle = triangle;
+                    comparison.normalCorner = corner;
+                }
+
+                if (comparison.uvsSame &&
+                    a.uv != b.uv) {
+                    comparison.uvsSame = false;
+                    comparison.uvTriangle = triangle;
+                    comparison.uvCorner = corner;
+                }
+
+                if (comparison.tangentsSame &&
+                    a.tangent != b.tangent) {
+                    comparison.tangentsSame = false;
+                    comparison.tangentTriangle = triangle;
+                    comparison.tangentCorner = corner;
+                }
+            }
+        }
+
+        return comparison;
+    }
+
+    float DiagnosticFloat(uint32_t bits) {
+        return std::bit_cast<float>(bits);
+    }
+
+    void LogAttributeDifference(
+        const PrimitiveDiagnostic& lhs,
+        const PrimitiveDiagnostic& rhs,
+        const AttributeComparison& comparison
+    ) {
+        Logger::Log(
+            Logger::LOG,
+            "Primitive attribute candidate '{}' vs '{}': "
+            "position/topology=same, normals={}, uvs={}, tangents={}",
+            lhs.name,
+            rhs.name,
+            comparison.normalsSame ? "same" : "DIFFERENT",
+            comparison.uvsSame ? "same" : "DIFFERENT",
+            comparison.tangentsSame ? "same" : "DIFFERENT"
+        );
+
+        if (!comparison.normalsSame) {
+            const DiagnosticCorner& a =
+                lhs.triangles[comparison.normalTriangle]
+                    .corners[comparison.normalCorner];
+
+            const DiagnosticCorner& b =
+                rhs.triangles[comparison.normalTriangle]
+                    .corners[comparison.normalCorner];
+
+            Logger::Log(
+                Logger::LOG,
+                "  first normal difference at triangle {}, corner {}: "
+                "({}, {}, {}) vs ({}, {}, {})",
+                comparison.normalTriangle,
+                comparison.normalCorner,
+                DiagnosticFloat(a.normal[0]),
+                DiagnosticFloat(a.normal[1]),
+                DiagnosticFloat(a.normal[2]),
+                DiagnosticFloat(b.normal[0]),
+                DiagnosticFloat(b.normal[1]),
+                DiagnosticFloat(b.normal[2])
+            );
+        }
+
+        if (!comparison.uvsSame) {
+            const DiagnosticCorner& a =
+                lhs.triangles[comparison.uvTriangle]
+                    .corners[comparison.uvCorner];
+
+            const DiagnosticCorner& b =
+                rhs.triangles[comparison.uvTriangle]
+                    .corners[comparison.uvCorner];
+
+            Logger::Log(
+                Logger::LOG,
+                "  first UV difference at triangle {}, corner {}: "
+                "({}, {}) vs ({}, {})",
+                comparison.uvTriangle,
+                comparison.uvCorner,
+                DiagnosticFloat(a.uv[0]),
+                DiagnosticFloat(a.uv[1]),
+                DiagnosticFloat(b.uv[0]),
+                DiagnosticFloat(b.uv[1])
+            );
+        }
+
+        if (!comparison.tangentsSame) {
+            const DiagnosticCorner& a =
+                lhs.triangles[comparison.tangentTriangle]
+                    .corners[comparison.tangentCorner];
+
+            const DiagnosticCorner& b =
+                rhs.triangles[comparison.tangentTriangle]
+                    .corners[comparison.tangentCorner];
+
+            Logger::Log(
+                Logger::LOG,
+                "  first tangent difference at triangle {}, corner {}: "
+                "({}, {}, {}, {}) vs ({}, {}, {}, {})",
+                comparison.tangentTriangle,
+                comparison.tangentCorner,
+                DiagnosticFloat(a.tangent[0]),
+                DiagnosticFloat(a.tangent[1]),
+                DiagnosticFloat(a.tangent[2]),
+                DiagnosticFloat(a.tangent[3]),
+                DiagnosticFloat(b.tangent[0]),
+                DiagnosticFloat(b.tangent[1]),
+                DiagnosticFloat(b.tangent[2]),
+                DiagnosticFloat(b.tangent[3])
+            );
+        }
+    }
+
     uint64_t HashGeometry(const CanonicalGeometry& geometry) {
         uint64_t hash = FNV_OFFSET_BASIS;
 
@@ -306,8 +634,13 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
     std::vector<std::vector<LoadedPrimitive>> loadedMeshes(asset.meshes.size());
     std::unordered_map<uint64_t, std::vector<CachedGeometry>> geometryCache;
+    std::unordered_map<uint64_t, std::vector<PrimitiveDiagnostic>>
+        attributeDiagnosticCache;
     std::unordered_set<MaterialID> modelMaterialIDs;
     GeometryDedupStats dedupStats;
+
+    std::size_t attributeDifferencePairs = 0;
+    constexpr std::size_t MAX_ATTRIBUTE_DIAGNOSTIC_LOGS = 32;
 
     for (std::size_t meshIndex = 0; meshIndex < asset.meshes.size(); ++meshIndex) {
         const auto& gltfMesh = asset.meshes[meshIndex];
@@ -538,6 +871,63 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 }
             );
 
+            std::string primitiveName(
+                gltfMesh.name.data(),
+                gltfMesh.name.size()
+            );
+
+            if (primitiveName.empty()) {
+                primitiveName =
+                    "Mesh " + std::to_string(meshIndex);
+            }
+
+            primitiveName +=
+                " Primitive " +
+                std::to_string(primitiveIndex);
+
+            PrimitiveDiagnostic diagnostic =
+                BuildPrimitiveDiagnostic(
+                    primitiveName,
+                    vertices,
+                    indices
+                );
+
+            auto& diagnosticCandidates =
+                attributeDiagnosticCache[
+                    diagnostic.positionTopologyHash
+                ];
+
+            for (const PrimitiveDiagnostic& candidate :
+                 diagnosticCandidates) {
+                const AttributeComparison comparison =
+                    ComparePrimitiveAttributes(
+                        candidate,
+                        diagnostic
+                    );
+
+                if (!comparison.positionTopologySame ||
+                    (comparison.normalsSame &&
+                     comparison.uvsSame &&
+                     comparison.tangentsSame)) {
+                    continue;
+                }
+
+                ++attributeDifferencePairs;
+
+                if (attributeDifferencePairs <=
+                    MAX_ATTRIBUTE_DIAGNOSTIC_LOGS) {
+                    LogAttributeDifference(
+                        candidate,
+                        diagnostic,
+                        comparison
+                    );
+                }
+            }
+
+            diagnosticCandidates.push_back(
+                std::move(diagnostic)
+            );
+
             const MaterialID materialID =
                 GetOrCreateMaterial(materialDescription);
 
@@ -611,12 +1001,6 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 });
             }
 
-            std::string primitiveName(gltfMesh.name.data(), gltfMesh.name.size());
-            if (primitiveName.empty()) {
-                primitiveName = "Mesh " + std::to_string(meshIndex);
-            }
-            primitiveName += " Primitive " + std::to_string(primitiveIndex);
-
             outputMesh.push_back({
                 .mesh = std::move(mesh),
                 .material = materialID,
@@ -679,6 +1063,29 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             }
         }
     );
+
+    if (attributeDifferencePairs > 0) {
+        Logger::Log(
+            Logger::LOG,
+            "Primitive attribute diagnostics '{}': found {} pair(s) with "
+            "matching translated position/topology but differing vertex "
+            "attributes; logged first {}",
+            normalizedPath.string(),
+            attributeDifferencePairs,
+            std::min(
+                attributeDifferencePairs,
+                MAX_ATTRIBUTE_DIAGNOSTIC_LOGS
+            )
+        );
+    } else {
+        Logger::Log(
+            Logger::LOG,
+            "Primitive attribute diagnostics '{}': no primitives shared "
+            "translated position/topology while differing only in normal/UV/"
+            "tangent attributes",
+            normalizedPath.string()
+        );
+    }
 
     const double primitiveReduction =
         dedupStats.primitiveCount == 0
