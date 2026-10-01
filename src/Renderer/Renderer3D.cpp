@@ -63,20 +63,12 @@ void Renderer3D::BeginScene(Camera& camera) {
 void Renderer3D::SubmitMesh(
     const Mesh& Mesh,
     const glm::mat4& Transform,
-    AssetID albedoTexture,
-    AssetID normalTexture,
-    AssetID materialTexture,
-    float metalicFactor,
-    float roughnessFactor) {
+    MaterialID material) {
 
     mRenderQueue.Submit({
         &Mesh,
         Transform,
-        mAssetManager.GetTextureIndex(albedoTexture),
-        mAssetManager.GetTextureIndex(normalTexture),
-        mAssetManager.GetTextureIndex(materialTexture),
-        metalicFactor,
-        roughnessFactor
+        material
     });
 }
 
@@ -89,7 +81,13 @@ void Renderer3D::EndScene(RenderContext& context) {
     mDeferredRenderer->Prepare(mRenderQueue);
 
     const PushConstants pushConstants =
-        mFrameData.Prepare(*mCamera, mDeferredRenderer->GetObjects(), mDirectionalLights, mPointLights);
+        mFrameData.Prepare(
+            *mCamera,
+            mDeferredRenderer->GetObjects(),
+            mAssetManager.GetMaterialBufferAddress(),
+            mDirectionalLights,
+            mPointLights
+        );
 
     GraphicsCommands::BeginDraw();
 

@@ -11,6 +11,21 @@
 
 using namespace SUN;
 
+namespace {
+    bool MaterialEquals(const GPUMaterial& lhs, const GPUMaterial& rhs) {
+        return
+            lhs.baseColorFactor.x == rhs.baseColorFactor.x &&
+            lhs.baseColorFactor.y == rhs.baseColorFactor.y &&
+            lhs.baseColorFactor.z == rhs.baseColorFactor.z &&
+            lhs.baseColorFactor.w == rhs.baseColorFactor.w &&
+            lhs.albedoTextureIndex == rhs.albedoTextureIndex &&
+            lhs.normalTextureIndex == rhs.normalTextureIndex &&
+            lhs.materialTextureIndex == rhs.materialTextureIndex &&
+            lhs.metallicFactor == rhs.metallicFactor &&
+            lhs.roughnessFactor == rhs.roughnessFactor;
+    }
+}
+
 AssetManager::AssetManager() {
     mTextureDescriptors = ResourceFactory::CreateBindlessTextureResources(MAX_BINDLESS_TEXTURES);
 
@@ -31,6 +46,18 @@ AssetManager::AssetManager() {
 
     WriteTextureDescriptor(0, mFallbackTexture);
     WriteSamplerDescriptors();
+
+    mMaterialBuffer.Init(sizeof(GPUMaterial) * MAX_MATERIALS, true);
+    mMaterials.reserve(MAX_MATERIALS);
+    mMaterials.push_back(GPUMaterial{});
+
+    for (uint32_t frameIndex = 0; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+        mMaterialBuffer.Upload(
+            frameIndex,
+            &mMaterials.front(),
+            sizeof(GPUMaterial)
+        );
+    }
 }
 
 AssetID AssetManager::LoadTexture(const std::filesystem::path& path, bool srgb) {
@@ -117,6 +144,57 @@ uint32_t AssetManager::GetTextureIndex(AssetID id) const {
 
 bool AssetManager::IsTextureLoaded(const std::filesystem::path& path) const {
     return mTexturePaths.contains(NormalizePath(path));
+}
+
+MaterialID AssetManager::GetOrCreateMaterial(const MaterialDescription& material) {
+    const GPUMaterial gpuMaterial {
+        .baseColorFactor = material.baseColorFactor,
+        .albedoTextureIndex = GetTextureIndex(material.albedoTexture),
+        .normalTextureIndex = GetTextureIndex(material.normalTexture),
+        .materialTextureIndex = GetTextureIndex(material.materialTexture),
+        .metallicFactor = material.metallicFactor,
+        .roughnessFactor = material.roughnessFactor
+    };
+
+    for (MaterialID materialIndex = 0;
+         materialIndex < static_cast<MaterialID>(mMaterials.size());
+         ++materialIndex) {
+        if (MaterialEquals(mMaterials[materialIndex], gpuMaterial)) {
+            return materialIndex;
+        }
+    }
+
+    if (mMaterials.size() >= MAX_MATERIALS) {
+        Logger::Log(
+            Logger::ERROR,
+            "Material table is full ({} materials)",
+            MAX_MATERIALS
+        );
+        return DEFAULT_MATERIAL_ID;
+    }
+
+    const MaterialID materialIndex =
+        static_cast<MaterialID>(mMaterials.size());
+
+    mMaterials.push_back(gpuMaterial);
+
+    const std::size_t offset =
+        static_cast<std::size_t>(materialIndex) * sizeof(GPUMaterial);
+
+    for (uint32_t frameIndex = 0; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+        mMaterialBuffer.Upload(
+            frameIndex,
+            &mMaterials.back(),
+            sizeof(GPUMaterial),
+            offset
+        );
+    }
+
+    return materialIndex;
+}
+
+vk::DeviceAddress AssetManager::GetMaterialBufferAddress() {
+    return mMaterialBuffer.GetDeviceAddress();
 }
 
 std::filesystem::path AssetManager::NormalizePath(const std::filesystem::path& path) {

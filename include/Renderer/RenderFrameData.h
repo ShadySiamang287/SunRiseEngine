@@ -12,6 +12,7 @@ namespace SUN {
         PushConstants Prepare(
             const Camera& camera,
             std::span<const ObjectData> objects,
+            vk::DeviceAddress materialDataAddress,
             std::span<const GPUDirectionalLight> directionalLights,
             std::span<const GPUPointLight> pointLights
         );

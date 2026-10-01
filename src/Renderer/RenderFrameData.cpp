@@ -17,6 +17,7 @@ RenderFrameData::RenderFrameData() {
 PushConstants RenderFrameData::Prepare(
     const Camera& camera,
     std::span<const ObjectData> objects,
+    vk::DeviceAddress materialDataAddress,
     std::span<const GPUDirectionalLight> directionalLights,
     std::span<const GPUPointLight> pointLights) {
 
@@ -56,6 +57,7 @@ PushConstants RenderFrameData::Prepare(
     return {
         mFrameDataBuffer.GetDeviceAddress(),
         mObjectDataBuffer.GetDeviceAddress(),
+        materialDataAddress,
         mDirectionalLightDataBuffer.GetDeviceAddress(),
         mPointLightDataBuffer.GetDeviceAddress()
     };

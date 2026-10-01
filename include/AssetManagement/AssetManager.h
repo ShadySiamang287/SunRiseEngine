@@ -2,14 +2,18 @@
 
 #include <filesystem>
 #include <unordered_map>
+#include <vector>
 
 #include "AssetManagement/Asset.h"
+#include "AssetManagement/Material.h"
 #include "AssetManagement/ModelAsset.h"
+#include "Graphics/Buffers.h"
 #include "Graphics/Texture2D.h"
 #include "Graphics/vertex.h"
 
 namespace SUN {
     inline constexpr uint32_t MAX_BINDLESS_TEXTURES = 1024;
+    inline constexpr uint32_t MAX_MATERIALS = 4096;
 
     class AssetManager {
     public:
@@ -23,6 +27,10 @@ namespace SUN {
 
         uint32_t GetTextureIndex(AssetID id) const;
         bool IsTextureLoaded(const std::filesystem::path& path) const;
+
+        MaterialID GetOrCreateMaterial(const MaterialDescription& material);
+        vk::DeviceAddress GetMaterialBufferAddress();
+        std::size_t GetMaterialCount() const { return mMaterials.size(); }
 
         DescriptorResources& GetTextureDescriptors() { return mTextureDescriptors; }
         const DescriptorResources& GetTextureDescriptors() const { return mTextureDescriptors; }
@@ -47,5 +55,8 @@ namespace SUN {
         std::unordered_map<AssetID, TextureAsset> mTextures;
         std::unordered_map<std::filesystem::path, AssetID> mTexturePaths;
         std::unordered_map<std::filesystem::path, std::shared_ptr<ModelAsset>> mModels;
+
+        ShaderBuffer mMaterialBuffer;
+        std::vector<GPUMaterial> mMaterials;
     };
 }

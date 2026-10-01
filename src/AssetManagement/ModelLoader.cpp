@@ -9,11 +9,15 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
+#include <array>
 #include <bit>
 #include <cstdint>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 using namespace SUN;
@@ -21,18 +25,30 @@ using namespace SUN;
 namespace {
     struct LoadedPrimitive {
         std::shared_ptr<Mesh> mesh;
-        AssetID albedoTexture = INVALID_ASSET_ID;
-        AssetID normalTexture = INVALID_ASSET_ID;
-        AssetID materialTexture = INVALID_ASSET_ID;
-        float metalicFactor = 1.f;
-        float roughnessFactor = 1.f;
+        MaterialID material = DEFAULT_MATERIAL_ID;
         std::string name;
+    };
+
+    struct CanonicalVertex {
+        std::array<uint32_t, 12> values{};
+
+        bool operator==(const CanonicalVertex&) const = default;
+
+        bool operator<(const CanonicalVertex& other) const {
+            return values < other.values;
+        }
+    };
+
+    struct CanonicalGeometry {
+        std::vector<CanonicalVertex> vertices;
+        std::vector<std::array<uint32_t, 3>> triangles;
+
+        bool operator==(const CanonicalGeometry&) const = default;
     };
 
     struct CachedGeometry {
         std::shared_ptr<Mesh> mesh;
-        std::vector<Vertex> vertices;
-        std::vector<uint32_t> indices;
+        CanonicalGeometry geometry;
     };
 
     struct GeometryDedupStats {
@@ -53,102 +69,131 @@ namespace {
 
     void HashUint32(uint64_t& hash, uint32_t value) {
         for (uint32_t byte = 0; byte < sizeof(value); ++byte) {
-            HashByte(hash, static_cast<uint8_t>((value >> (byte * 8u)) & 0xffu));
+            HashByte(
+                hash,
+                static_cast<uint8_t>((value >> (byte * 8u)) & 0xffu)
+            );
         }
     }
 
     void HashUint64(uint64_t& hash, uint64_t value) {
         for (uint32_t byte = 0; byte < sizeof(value); ++byte) {
-            HashByte(hash, static_cast<uint8_t>((value >> (byte * 8u)) & 0xffu));
+            HashByte(
+                hash,
+                static_cast<uint8_t>((value >> (byte * 8u)) & 0xffu)
+            );
         }
     }
 
-    void HashFloat(uint64_t& hash, float value) {
-        HashUint32(hash, std::bit_cast<uint32_t>(value));
+    uint32_t CanonicalFloatBits(float value) {
+        if (value == 0.0f) {
+            return 0;
+        }
+        return std::bit_cast<uint32_t>(value);
     }
 
-    void HashVertex(uint64_t& hash, const Vertex& vertex) {
-        HashFloat(hash, vertex.pos.x);
-        HashFloat(hash, vertex.pos.y);
-        HashFloat(hash, vertex.pos.z);
-
-        HashFloat(hash, vertex.normal.x);
-        HashFloat(hash, vertex.normal.y);
-        HashFloat(hash, vertex.normal.z);
-
-        HashFloat(hash, vertex.colour.x);
-        HashFloat(hash, vertex.colour.y);
-        HashFloat(hash, vertex.colour.z);
-
-        HashFloat(hash, vertex.uv.x);
-        HashFloat(hash, vertex.uv.y);
-
-        HashFloat(hash, vertex.tangent.x);
-        HashFloat(hash, vertex.tangent.y);
-        HashFloat(hash, vertex.tangent.z);
-        HashFloat(hash, vertex.tangent.w);
+    CanonicalVertex MakeCanonicalVertex(const Vertex& vertex) {
+        return {{
+            CanonicalFloatBits(vertex.pos.x),
+            CanonicalFloatBits(vertex.pos.y),
+            CanonicalFloatBits(vertex.pos.z),
+            CanonicalFloatBits(vertex.normal.x),
+            CanonicalFloatBits(vertex.normal.y),
+            CanonicalFloatBits(vertex.normal.z),
+            CanonicalFloatBits(vertex.uv.x),
+            CanonicalFloatBits(vertex.uv.y),
+            CanonicalFloatBits(vertex.tangent.x),
+            CanonicalFloatBits(vertex.tangent.y),
+            CanonicalFloatBits(vertex.tangent.z),
+            CanonicalFloatBits(vertex.tangent.w)
+        }};
     }
 
-    uint64_t HashGeometry(
+    CanonicalGeometry BuildCanonicalGeometry(
         const std::vector<Vertex>& vertices,
         const std::vector<uint32_t>& indices
     ) {
+        CanonicalGeometry canonical;
+        canonical.vertices.reserve(vertices.size());
+        canonical.triangles.reserve(indices.size() / 3);
+
+        std::vector<std::pair<CanonicalVertex, uint32_t>> sortedVertices;
+        sortedVertices.reserve(vertices.size());
+
+        for (uint32_t i = 0; i < static_cast<uint32_t>(vertices.size()); ++i) {
+            sortedVertices.emplace_back(MakeCanonicalVertex(vertices[i]), i);
+        }
+
+        std::sort(
+            sortedVertices.begin(),
+            sortedVertices.end(),
+            [](const auto& lhs, const auto& rhs) {
+                return lhs.first < rhs.first;
+            }
+        );
+
+        std::vector<uint32_t> remap(vertices.size());
+
+        for (const auto& [vertex, originalIndex] : sortedVertices) {
+            if (canonical.vertices.empty() ||
+                !(canonical.vertices.back() == vertex)) {
+                canonical.vertices.push_back(vertex);
+            }
+
+            remap[originalIndex] =
+                static_cast<uint32_t>(canonical.vertices.size() - 1);
+        }
+
+        for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
+            std::array<uint32_t, 3> triangle {
+                remap[indices[i]],
+                remap[indices[i + 1]],
+                remap[indices[i + 2]]
+            };
+
+            const std::array<uint32_t, 3> rotate1 {
+                triangle[1],
+                triangle[2],
+                triangle[0]
+            };
+
+            const std::array<uint32_t, 3> rotate2 {
+                triangle[2],
+                triangle[0],
+                triangle[1]
+            };
+
+            triangle = std::min(triangle, std::min(rotate1, rotate2));
+            canonical.triangles.push_back(triangle);
+        }
+
+        std::sort(
+            canonical.triangles.begin(),
+            canonical.triangles.end()
+        );
+
+        return canonical;
+    }
+
+    uint64_t HashGeometry(const CanonicalGeometry& geometry) {
         uint64_t hash = FNV_OFFSET_BASIS;
 
-        HashUint64(hash, static_cast<uint64_t>(vertices.size()));
-        HashUint64(hash, static_cast<uint64_t>(indices.size()));
+        HashUint64(hash, static_cast<uint64_t>(geometry.vertices.size()));
+        HashUint64(hash, static_cast<uint64_t>(geometry.triangles.size()));
 
-        for (const Vertex& vertex : vertices) {
-            HashVertex(hash, vertex);
-        }
-
-        for (uint32_t index : indices) {
-            HashUint32(hash, index);
-        }
-
-        return hash;
-    }
-
-    bool FloatBitsEqual(float lhs, float rhs) {
-        return std::bit_cast<uint32_t>(lhs) == std::bit_cast<uint32_t>(rhs);
-    }
-
-    bool VerticesEqual(const Vertex& lhs, const Vertex& rhs) {
-        return
-            FloatBitsEqual(lhs.pos.x, rhs.pos.x) &&
-            FloatBitsEqual(lhs.pos.y, rhs.pos.y) &&
-            FloatBitsEqual(lhs.pos.z, rhs.pos.z) &&
-            FloatBitsEqual(lhs.normal.x, rhs.normal.x) &&
-            FloatBitsEqual(lhs.normal.y, rhs.normal.y) &&
-            FloatBitsEqual(lhs.normal.z, rhs.normal.z) &&
-            FloatBitsEqual(lhs.colour.x, rhs.colour.x) &&
-            FloatBitsEqual(lhs.colour.y, rhs.colour.y) &&
-            FloatBitsEqual(lhs.colour.z, rhs.colour.z) &&
-            FloatBitsEqual(lhs.uv.x, rhs.uv.x) &&
-            FloatBitsEqual(lhs.uv.y, rhs.uv.y) &&
-            FloatBitsEqual(lhs.tangent.x, rhs.tangent.x) &&
-            FloatBitsEqual(lhs.tangent.y, rhs.tangent.y) &&
-            FloatBitsEqual(lhs.tangent.z, rhs.tangent.z) &&
-            FloatBitsEqual(lhs.tangent.w, rhs.tangent.w);
-    }
-
-    bool GeometryMatches(
-        const CachedGeometry& cached,
-        const std::vector<Vertex>& vertices,
-        const std::vector<uint32_t>& indices
-    ) {
-        if (cached.vertices.size() != vertices.size() ||
-            cached.indices.size() != indices.size()) {
-            return false;
-        }
-
-        for (std::size_t i = 0; i < vertices.size(); ++i) {
-            if (!VerticesEqual(cached.vertices[i], vertices[i])) {
-                return false;
+        for (const CanonicalVertex& vertex : geometry.vertices) {
+            for (uint32_t value : vertex.values) {
+                HashUint32(hash, value);
             }
         }
 
-        return cached.indices == indices;
+        for (const auto& triangle : geometry.triangles) {
+            HashUint32(hash, triangle[0]);
+            HashUint32(hash, triangle[1]);
+            HashUint32(hash, triangle[2]);
+        }
+
+        return hash;
     }
 
     glm::mat4 ToGlm(const fastgltf::math::fmat4x4& matrix) {
@@ -225,6 +270,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
     std::vector<std::vector<LoadedPrimitive>> loadedMeshes(asset.meshes.size());
     std::unordered_map<uint64_t, std::vector<CachedGeometry>> geometryCache;
+    std::unordered_set<MaterialID> modelMaterialIDs;
     GeometryDedupStats dedupStats;
 
     for (std::size_t meshIndex = 0; meshIndex < asset.meshes.size(); ++meshIndex) {
@@ -257,7 +303,6 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             std::vector<Vertex> vertices(positionAccessor.count);
             for (auto& vertex : vertices) {
                 vertex.normal = {0.0f, 1.0f, 0.0f};
-                vertex.colour = {1.0f, 1.0f, 1.0f};
                 vertex.uv = {0.0f, 0.0f};
                 vertex.tangent = {0.f, 0.f, 0.f, 0.f};
             }
@@ -294,32 +339,27 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 );
             }
 
-            AssetID albedoTexture = INVALID_ASSET_ID;
-            AssetID normalTexture = INVALID_ASSET_ID;
-            AssetID materialTexture = INVALID_ASSET_ID;
-            float metallicFactor = 0.f;
-            float roughnessFactor = 0.f;
+            MaterialDescription materialDescription{};
             std::size_t texCoordIndex = 0;
-            glm::vec4 baseColorFactor{1.0f};
 
             if (primitive.materialIndex.has_value()) {
                 const auto& material = asset.materials[primitive.materialIndex.value()];
 
                 const auto& factor = material.pbrData.baseColorFactor;
-                baseColorFactor = {
+                materialDescription.baseColorFactor = {
                     factor[0],
                     factor[1],
                     factor[2],
                     factor[3]
                 };
 
-                metallicFactor = glm::clamp(
+                materialDescription.metallicFactor = glm::clamp(
                     material.pbrData.metallicFactor,
                     0.0f,
                     1.0f
                 );
 
-                roughnessFactor = glm::clamp(
+                materialDescription.roughnessFactor = glm::clamp(
                     material.pbrData.roughnessFactor,
                     0.0f,
                     1.0f
@@ -347,7 +387,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                                     const auto imagePath = ResolveImagePath(normalizedPath.parent_path(), source
                                     );
 
-                                    albedoTexture = LoadTexture(imagePath, true);
+                                    materialDescription.albedoTexture = LoadTexture(imagePath, true);
                                 },
                                 [&](const auto&) {
                                     Logger::Log(
@@ -378,7 +418,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
                                     auto imagePath = ResolveImagePath(normalizedPath.parent_path(), source );
 
-                                    normalTexture = LoadTexture(imagePath, false);
+                                    materialDescription.normalTexture = LoadTexture(imagePath, false);
                                 },
 
                                 [&](const auto&)
@@ -411,7 +451,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                                         source
                                     );
 
-                                    materialTexture = LoadTexture(imagePath, false);
+                                    materialDescription.materialTexture = LoadTexture(imagePath, false);
                                 },
 
                                 [&](const auto&)
@@ -426,10 +466,6 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                         );
                     }
                 }
-            }
-
-            for (auto& vertex : vertices) {
-                vertex.colour = glm::vec3(baseColorFactor);
             }
 
             const std::string texCoordName =
@@ -466,6 +502,11 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 }
             );
 
+            const MaterialID materialID =
+                GetOrCreateMaterial(materialDescription);
+
+            modelMaterialIDs.insert(materialID);
+
             const std::size_t geometryBytes =
                 vertices.size() * sizeof(Vertex) +
                 indices.size() * sizeof(uint32_t);
@@ -473,12 +514,19 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             ++dedupStats.primitiveCount;
             dedupStats.sourceBytes += geometryBytes;
 
-            const uint64_t geometryHash = HashGeometry(vertices, indices);
-            auto& candidates = geometryCache[geometryHash];
+            CanonicalGeometry canonicalGeometry =
+                BuildCanonicalGeometry(vertices, indices);
+
+            const uint64_t geometryHash =
+                HashGeometry(canonicalGeometry);
+
+            auto& candidates =
+                geometryCache[geometryHash];
 
             std::shared_ptr<Mesh> mesh;
+
             for (const CachedGeometry& candidate : candidates) {
-                if (GeometryMatches(candidate, vertices, indices)) {
+                if (candidate.geometry == canonicalGeometry) {
                     mesh = candidate.mesh;
                     ++dedupStats.reusedGeometryCount;
                     break;
@@ -501,8 +549,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
                 candidates.push_back({
                     .mesh = mesh,
-                    .vertices = std::move(vertices),
-                    .indices = std::move(indices)
+                    .geometry = std::move(canonicalGeometry)
                 });
             }
 
@@ -514,11 +561,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
             outputMesh.push_back({
                 .mesh = std::move(mesh),
-                .albedoTexture = albedoTexture,
-                .normalTexture = normalTexture,
-                .materialTexture = materialTexture,
-                .metalicFactor = metallicFactor,
-                .roughnessFactor = roughnessFactor,
+                .material = materialID,
                 .name = std::move(primitiveName)
             });
         }
@@ -569,11 +612,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
                 model->primitives.push_back({
                     .mesh = primitive.mesh,
-                    .albedoTexture = primitive.albedoTexture,
-                    .normalTexture = primitive.normalTexture,
-                    .materialTexture = primitive.materialTexture,
-                    .metalicFactor = primitive.metalicFactor,
-                    .roughnessFactor = primitive.roughnessFactor,
+                    .material = primitive.material,
                     .transform = nodeTransform,
                     .name = std::move(name)
                 });
@@ -609,6 +648,23 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
         static_cast<double>(dedupStats.sourceBytes) / bytesPerMiB,
         static_cast<double>(dedupStats.uploadedBytes) / bytesPerMiB,
         uploadReduction
+    );
+
+    const double materialReuse =
+        dedupStats.primitiveCount == 0
+            ? 0.0
+            : (1.0 -
+               static_cast<double>(modelMaterialIDs.size()) /
+               static_cast<double>(dedupStats.primitiveCount)) * 100.0;
+
+    Logger::Log(
+        Logger::LOG,
+        "Material sharing '{}': {} primitive references -> {} unique materials "
+        "({:.1f}% reuse)",
+        normalizedPath.string(),
+        dedupStats.primitiveCount,
+        modelMaterialIDs.size(),
+        materialReuse
     );
 
     Logger::Log(

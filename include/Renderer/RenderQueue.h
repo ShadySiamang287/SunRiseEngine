@@ -1,23 +1,20 @@
 #pragma once
-#include "Renderer/RenderingStructs.h"
 
 #include <vector>
-#include <iostream>
+
+#include "AssetManagement/Material.h"
+#include "Renderer/RenderingStructs.h"
 
 namespace SUN {
     struct RenderCommand {
         const Mesh* mesh;
         glm::mat4 Transform;
-        uint32_t albedoTextureIndex = 0;
-        uint32_t normalTextureIndex = 0;
-        uint32_t materialTexturIndex = 0;
-        float metalicFactor = 1.f;
-        float roughnessFactor = 1.f;
+        MaterialID materialIndex = DEFAULT_MATERIAL_ID;
     };
 
     class RenderQueue {
     public:
-        void Submit(const RenderCommand& command){
+        void Submit(const RenderCommand& command) {
             mCommands.push_back(command);
         }
 

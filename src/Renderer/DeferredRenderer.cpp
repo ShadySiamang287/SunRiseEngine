@@ -14,7 +14,8 @@ DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
     : mAssetManager(assetManager) {
 
     mPipelineLayout = ResourceFactory::CreatePipelineLayout(
-        vk::ShaderStageFlagBits::eVertex,
+        vk::ShaderStageFlagBits::eVertex |
+            vk::ShaderStageFlagBits::eFragment,
         sizeof(PushConstants),
         &mAssetManager.GetTextureDescriptors()
     );
@@ -157,7 +158,12 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
     GraphicsCommands::SetDepthTestEnable(true);
     GraphicsCommands::SetDepthWriteEnable(true);
 
-    GraphicsCommands::PushConstants(mPipelineLayout, vk::ShaderStageFlagBits::eVertex, pushConstants);
+    GraphicsCommands::PushConstants(
+        mPipelineLayout,
+        vk::ShaderStageFlagBits::eVertex |
+            vk::ShaderStageFlagBits::eFragment,
+        pushConstants
+    );
 
     for (const auto& batch : mBatches) {
         GraphicsCommands::BindGeometryBuffer(batch.mesh->buffer);
@@ -294,11 +300,8 @@ void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
         mObjects.push_back({
             command.Transform,
             glm::mat4(glm::transpose(glm::inverse(glm::mat3(command.Transform)))),
-            command.albedoTextureIndex,
-            command.normalTextureIndex,
-            command.materialTexturIndex,
-            command.metalicFactor,
-            command.roughnessFactor,
+            command.materialIndex,
+            0,
             0,
             0
         });
