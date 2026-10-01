@@ -6,9 +6,76 @@
 #include "Logger.h"
 
 #include <algorithm>
+#include <array>
 #include <numeric>
 
 using namespace SUN;
+
+namespace {
+    bool IsOutsideFrustum(
+        const BoundingBox& bounds,
+        const glm::mat4& model,
+        const glm::mat4& viewProjection
+    ) {
+        const glm::vec3 minimum = bounds.min;
+        const glm::vec3 maximum = bounds.max;
+
+        bool outsideLeft = true;
+        bool outsideRight = true;
+        bool outsideBottom = true;
+        bool outsideTop = true;
+        bool outsideNear = true;
+        bool outsideFar = true;
+
+        for (uint32_t cornerIndex = 0;
+             cornerIndex < 8;
+             ++cornerIndex) {
+            const glm::vec3 localCorner {
+                (cornerIndex & 1u)
+                    ? maximum.x
+                    : minimum.x,
+                (cornerIndex & 2u)
+                    ? maximum.y
+                    : minimum.y,
+                (cornerIndex & 4u)
+                    ? maximum.z
+                    : minimum.z
+            };
+
+            const glm::vec4 clip =
+                viewProjection *
+                model *
+                glm::vec4(localCorner, 1.0f);
+
+            outsideLeft &=
+                clip.x < -clip.w;
+
+            outsideRight &=
+                clip.x > clip.w;
+
+            outsideBottom &=
+                clip.y < -clip.w;
+
+            outsideTop &=
+                clip.y > clip.w;
+
+            // Vulkan uses a zero-to-one depth clip range.
+            outsideNear &=
+                clip.z < 0.0f;
+
+            outsideFar &=
+                clip.z > clip.w;
+        }
+
+        return
+            outsideLeft ||
+            outsideRight ||
+            outsideBottom ||
+            outsideTop ||
+            outsideNear ||
+            outsideFar;
+    }
+}
 
 DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
     : mAssetManager(assetManager) {
@@ -47,9 +114,11 @@ DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
     CreateGBuffers(GraphicsCommands::GetSwapchainExtent());
 }
 
-void DeferredRenderer::Prepare(const RenderQueue& renderQueue) {
-
-    BuildBatches(renderQueue);
+void DeferredRenderer::Prepare(
+    const RenderQueue& renderQueue,
+    const Camera& camera
+) {
+    BuildBatches(renderQueue, camera);
 }
 
 void DeferredRenderer::Execute(const RenderContext& context, const PushConstants& pushConstants) {
@@ -258,27 +327,63 @@ void DeferredRenderer::CreateGBuffers(vk::Extent2D extent) {
     }
 }
 
-void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
-
+void DeferredRenderer::BuildBatches(
+    const RenderQueue& renderQueue,
+    const Camera& camera
+) {
     const auto& commands =
         renderQueue.GetCommands();
 
-    size_t count = commands.size();
+    const glm::mat4 viewProjection =
+        camera.GetProjectionMatrix() *
+        camera.GetViewMatrix();
 
-    if (count > MAX_OBJECTS) {
-        Logger::Log(
-            Logger::WARNING,
-            "Render queue has {} objects, only the first {} will be drawn",
-            count,
-            MAX_OBJECTS
-        );
+    mSortOrder.clear();
+    mSortOrder.reserve(
+        std::min(
+            commands.size(),
+            static_cast<std::size_t>(MAX_OBJECTS)
+        )
+    );
 
-        count = MAX_OBJECTS;
+    mCulledObjectCount = 0;
+
+    std::size_t visibleCount = 0;
+
+    for (uint32_t index = 0;
+         index < static_cast<uint32_t>(commands.size());
+         ++index) {
+        const RenderCommand& command =
+            commands[index];
+
+        if (!command.mesh) {
+            continue;
+        }
+
+        if (IsOutsideFrustum(
+                command.mesh->bounds,
+                command.Transform,
+                viewProjection)) {
+            ++mCulledObjectCount;
+            continue;
+        }
+
+        ++visibleCount;
+
+        if (mSortOrder.size() < MAX_OBJECTS) {
+            mSortOrder.push_back(index);
+        }
     }
 
-    mSortOrder.resize(count);
-
-    std::iota(mSortOrder.begin(), mSortOrder.end(), 0u);
+    if (visibleCount > MAX_OBJECTS) {
+        Logger::Log(
+            Logger::WARNING,
+            "Render queue has {} visible objects after frustum culling, "
+            "only the first {} will be drawn",
+            visibleCount,
+            MAX_OBJECTS
+        );
+    }
 
     std::ranges::sort(
         mSortOrder,
@@ -295,15 +400,30 @@ void DeferredRenderer::BuildBatches(const RenderQueue& renderQueue) {
         const RenderCommand& command =
             commands[index];
 
-        if (mBatches.empty() || mBatches.back().mesh != command.mesh) {
-            mBatches.push_back({ command.mesh, static_cast<uint32_t>(mObjects.size()), 0 });
+        if (mBatches.empty() ||
+            mBatches.back().mesh != command.mesh) {
+            mBatches.push_back({
+                command.mesh,
+                static_cast<uint32_t>(
+                    mObjects.size()
+                ),
+                0
+            });
         }
 
         mBatches.back().instanceCount++;
 
         mObjects.push_back({
             command.Transform,
-            glm::mat4(glm::transpose(glm::inverse(glm::mat3(command.Transform)))),
+            glm::mat4(
+                glm::transpose(
+                    glm::inverse(
+                        glm::mat3(
+                            command.Transform
+                        )
+                    )
+                )
+            ),
             command.materialIndex,
             0,
             0,

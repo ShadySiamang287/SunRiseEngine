@@ -78,7 +78,10 @@ void Renderer3D::EndScene(RenderContext& context) {
         .frameIndex = context.frameIndex
     };
 
-    mDeferredRenderer->Prepare(mRenderQueue);
+    mDeferredRenderer->Prepare(
+        mRenderQueue,
+        *mCamera
+    );
 
     const PushConstants pushConstants =
         mFrameData.Prepare(

@@ -14,7 +14,10 @@ namespace SUN {
     public:
         explicit DeferredRenderer(AssetManager& assetManager);
 
-        void Prepare(const RenderQueue& renderQueue);
+        void Prepare(
+            const RenderQueue& renderQueue,
+            const Camera& camera
+        );
 
         void Execute(const RenderContext& context, const PushConstants& pushConstants);
 
@@ -25,7 +28,10 @@ namespace SUN {
 
     private:
         void CreateGBuffers(vk::Extent2D extent);
-        void BuildBatches(const RenderQueue& renderQueue);
+        void BuildBatches(
+            const RenderQueue& renderQueue,
+            const Camera& camera
+        );
 
         vk::raii::Pipeline mPipeline = nullptr;
         vk::raii::PipelineLayout mPipelineLayout = nullptr;
@@ -37,5 +43,6 @@ namespace SUN {
         std::vector<uint32_t> mSortOrder;
         std::vector<ObjectData> mObjects;
         std::vector<DrawBatch> mBatches;
+        std::size_t mCulledObjectCount = 0;
     };
 }
