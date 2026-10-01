@@ -48,57 +48,6 @@ namespace {
         bool operator==(const CanonicalGeometry&) const = default;
     };
 
-    struct DiagnosticCorner {
-        std::array<uint32_t, 3> position{};
-        std::array<uint32_t, 3> normal{};
-        std::array<uint32_t, 2> uv{};
-        std::array<uint32_t, 4> tangent{};
-    };
-
-    struct DiagnosticTriangle {
-        std::array<DiagnosticCorner, 3> corners{};
-    };
-
-    struct PrimitiveDiagnostic {
-        std::string name;
-        std::size_t vertexCount = 0;
-        std::size_t indexCount = 0;
-        uint64_t positionTopologyHash = 0;
-        std::vector<DiagnosticTriangle> triangles;
-    };
-
-    struct AttributeComparison {
-        bool positionTopologySame = true;
-        bool normalsSame = true;
-        bool uvsSame = true;
-        bool tangentsSame = true;
-
-        std::size_t normalTriangle = 0;
-        std::size_t normalCorner = 0;
-        std::size_t uvTriangle = 0;
-        std::size_t uvCorner = 0;
-        std::size_t tangentTriangle = 0;
-        std::size_t tangentCorner = 0;
-    };
-
-    struct RigidShapeDiagnostic {
-        std::string name;
-        std::size_t vertexCount = 0;
-        std::size_t indexCount = 0;
-        uint64_t positionTopologyHash = 0;
-        uint64_t shapeHash = 0;
-        std::vector<std::array<uint64_t, 3>> triangleEdges;
-    };
-
-    struct ScaledShapeDiagnostic {
-        std::string name;
-        std::size_t vertexCount = 0;
-        std::size_t indexCount = 0;
-        uint64_t normalizedShapeHash = 0;
-        double referenceEdgeLength = 0.0;
-        std::vector<std::array<uint64_t, 3>> normalizedTriangleEdges;
-    };
-
     struct AffineDiagnostic {
         std::string name;
         uint64_t topologyHash = 0;
@@ -123,6 +72,11 @@ namespace {
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
         std::string name;
+    };
+
+    struct VertexDedupStats {
+        std::size_t inputVertices = 0;
+        std::size_t outputVertices = 0;
     };
 
     struct GeometryDedupStats {
@@ -284,472 +238,117 @@ namespace {
         return canonical;
     }
 
-    bool PositionLess(
-        const DiagnosticCorner& lhs,
-        const DiagnosticCorner& rhs
-    ) {
-        return lhs.position < rhs.position;
-    }
+    uint64_t HashVertex(const Vertex& vertex) {
+        uint64_t hash = FNV_OFFSET_BASIS;
 
-    bool TrianglePositionLess(
-        const DiagnosticTriangle& lhs,
-        const DiagnosticTriangle& rhs
-    ) {
-        for (std::size_t corner = 0; corner < 3; ++corner) {
-            if (lhs.corners[corner].position <
-                rhs.corners[corner].position) {
-                return true;
-            }
+        const std::array<float, 12> values {
+            vertex.pos.x,
+            vertex.pos.y,
+            vertex.pos.z,
+            vertex.normal.x,
+            vertex.normal.y,
+            vertex.normal.z,
+            vertex.uv.x,
+            vertex.uv.y,
+            vertex.tangent.x,
+            vertex.tangent.y,
+            vertex.tangent.z,
+            vertex.tangent.w
+        };
 
-            if (rhs.corners[corner].position <
-                lhs.corners[corner].position) {
-                return false;
-            }
+        for (float value : values) {
+            HashUint32(hash, CanonicalFloatBits(value));
         }
 
-        return false;
+        return hash;
     }
 
-    DiagnosticTriangle RotateDiagnosticTriangle(
-        const DiagnosticTriangle& triangle,
-        std::size_t rotation
+    bool VerticesEqual(
+        const Vertex& lhs,
+        const Vertex& rhs
     ) {
-        DiagnosticTriangle result;
+        return
+            CanonicalFloatBits(lhs.pos.x) ==
+                CanonicalFloatBits(rhs.pos.x) &&
+            CanonicalFloatBits(lhs.pos.y) ==
+                CanonicalFloatBits(rhs.pos.y) &&
+            CanonicalFloatBits(lhs.pos.z) ==
+                CanonicalFloatBits(rhs.pos.z) &&
+            CanonicalFloatBits(lhs.normal.x) ==
+                CanonicalFloatBits(rhs.normal.x) &&
+            CanonicalFloatBits(lhs.normal.y) ==
+                CanonicalFloatBits(rhs.normal.y) &&
+            CanonicalFloatBits(lhs.normal.z) ==
+                CanonicalFloatBits(rhs.normal.z) &&
+            CanonicalFloatBits(lhs.uv.x) ==
+                CanonicalFloatBits(rhs.uv.x) &&
+            CanonicalFloatBits(lhs.uv.y) ==
+                CanonicalFloatBits(rhs.uv.y) &&
+            CanonicalFloatBits(lhs.tangent.x) ==
+                CanonicalFloatBits(rhs.tangent.x) &&
+            CanonicalFloatBits(lhs.tangent.y) ==
+                CanonicalFloatBits(rhs.tangent.y) &&
+            CanonicalFloatBits(lhs.tangent.z) ==
+                CanonicalFloatBits(rhs.tangent.z) &&
+            CanonicalFloatBits(lhs.tangent.w) ==
+                CanonicalFloatBits(rhs.tangent.w);
+    }
 
-        for (std::size_t corner = 0; corner < 3; ++corner) {
-            result.corners[corner] =
-                triangle.corners[(corner + rotation) % 3];
+    void DeduplicateVertices(
+        std::vector<Vertex>& vertices,
+        std::vector<uint32_t>& indices
+    ) {
+        if (vertices.empty()) {
+            return;
         }
 
-        return result;
-    }
+        std::vector<Vertex> uniqueVertices;
+        uniqueVertices.reserve(vertices.size());
 
-    PrimitiveDiagnostic BuildPrimitiveDiagnostic(
-        std::string name,
-        const std::vector<Vertex>& vertices,
-        const std::vector<uint32_t>& indices
-    ) {
-        PrimitiveDiagnostic diagnostic;
-        diagnostic.name = std::move(name);
-        diagnostic.vertexCount = vertices.size();
-        diagnostic.indexCount = indices.size();
-        diagnostic.triangles.reserve(indices.size() / 3);
+        std::vector<uint32_t> remap(vertices.size());
 
-        const glm::vec3 origin =
-            FindGeometryOrigin(vertices);
+        std::unordered_map<uint64_t, std::vector<uint32_t>>
+            vertexBuckets;
 
-        auto makeCorner =
-            [&](uint32_t vertexIndex) {
-                const Vertex& vertex =
-                    vertices[vertexIndex];
+        vertexBuckets.reserve(vertices.size());
 
-                const glm::vec3 relativePosition =
-                    vertex.pos - origin;
+        for (uint32_t sourceIndex = 0;
+             sourceIndex < static_cast<uint32_t>(vertices.size());
+             ++sourceIndex) {
+            const Vertex& vertex = vertices[sourceIndex];
+            const uint64_t hash = HashVertex(vertex);
 
-                return DiagnosticCorner {
-                    .position = {
-                        CanonicalFloatBits(relativePosition.x),
-                        CanonicalFloatBits(relativePosition.y),
-                        CanonicalFloatBits(relativePosition.z)
-                    },
-                    .normal = {
-                        CanonicalFloatBits(vertex.normal.x),
-                        CanonicalFloatBits(vertex.normal.y),
-                        CanonicalFloatBits(vertex.normal.z)
-                    },
-                    .uv = {
-                        CanonicalFloatBits(vertex.uv.x),
-                        CanonicalFloatBits(vertex.uv.y)
-                    },
-                    .tangent = {
-                        CanonicalFloatBits(vertex.tangent.x),
-                        CanonicalFloatBits(vertex.tangent.y),
-                        CanonicalFloatBits(vertex.tangent.z),
-                        CanonicalFloatBits(vertex.tangent.w)
-                    }
-                };
-            };
+            auto& bucket = vertexBuckets[hash];
 
-        for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
-            DiagnosticTriangle triangle {
-                .corners = {
-                    makeCorner(indices[i]),
-                    makeCorner(indices[i + 1]),
-                    makeCorner(indices[i + 2])
+            uint32_t uniqueIndex = UINT32_MAX;
+
+            for (uint32_t candidateIndex : bucket) {
+                if (VerticesEqual(
+                        uniqueVertices[candidateIndex],
+                        vertex)) {
+                    uniqueIndex = candidateIndex;
+                    break;
                 }
-            };
+            }
 
-            DiagnosticTriangle best = triangle;
-
-            for (std::size_t rotation = 1; rotation < 3; ++rotation) {
-                DiagnosticTriangle candidate =
-                    RotateDiagnosticTriangle(
-                        triangle,
-                        rotation
+            if (uniqueIndex == UINT32_MAX) {
+                uniqueIndex =
+                    static_cast<uint32_t>(
+                        uniqueVertices.size()
                     );
 
-                if (TrianglePositionLess(candidate, best)) {
-                    best = std::move(candidate);
-                }
+                uniqueVertices.push_back(vertex);
+                bucket.push_back(uniqueIndex);
             }
 
-            diagnostic.triangles.push_back(
-                std::move(best)
-            );
+            remap[sourceIndex] = uniqueIndex;
         }
 
-        std::sort(
-            diagnostic.triangles.begin(),
-            diagnostic.triangles.end(),
-            TrianglePositionLess
-        );
-
-        uint64_t hash = FNV_OFFSET_BASIS;
-
-        HashUint64(
-            hash,
-            static_cast<uint64_t>(diagnostic.vertexCount)
-        );
-
-        HashUint64(
-            hash,
-            static_cast<uint64_t>(diagnostic.indexCount)
-        );
-
-        for (const DiagnosticTriangle& triangle :
-             diagnostic.triangles) {
-            for (const DiagnosticCorner& corner :
-                 triangle.corners) {
-                for (uint32_t value : corner.position) {
-                    HashUint32(hash, value);
-                }
-            }
+        for (uint32_t& index : indices) {
+            index = remap[index];
         }
 
-        diagnostic.positionTopologyHash = hash;
-        return diagnostic;
-    }
-
-    AttributeComparison ComparePrimitiveAttributes(
-        const PrimitiveDiagnostic& lhs,
-        const PrimitiveDiagnostic& rhs
-    ) {
-        AttributeComparison comparison;
-
-        if (lhs.vertexCount != rhs.vertexCount ||
-            lhs.indexCount != rhs.indexCount ||
-            lhs.triangles.size() != rhs.triangles.size()) {
-            comparison.positionTopologySame = false;
-            return comparison;
-        }
-
-        for (std::size_t triangle = 0;
-             triangle < lhs.triangles.size();
-             ++triangle) {
-            for (std::size_t corner = 0;
-                 corner < 3;
-                 ++corner) {
-                const DiagnosticCorner& a =
-                    lhs.triangles[triangle].corners[corner];
-
-                const DiagnosticCorner& b =
-                    rhs.triangles[triangle].corners[corner];
-
-                if (a.position != b.position) {
-                    comparison.positionTopologySame = false;
-                    return comparison;
-                }
-
-                if (comparison.normalsSame &&
-                    a.normal != b.normal) {
-                    comparison.normalsSame = false;
-                    comparison.normalTriangle = triangle;
-                    comparison.normalCorner = corner;
-                }
-
-                if (comparison.uvsSame &&
-                    a.uv != b.uv) {
-                    comparison.uvsSame = false;
-                    comparison.uvTriangle = triangle;
-                    comparison.uvCorner = corner;
-                }
-
-                if (comparison.tangentsSame &&
-                    a.tangent != b.tangent) {
-                    comparison.tangentsSame = false;
-                    comparison.tangentTriangle = triangle;
-                    comparison.tangentCorner = corner;
-                }
-            }
-        }
-
-        return comparison;
-    }
-
-    float DiagnosticFloat(uint32_t bits) {
-        return std::bit_cast<float>(bits);
-    }
-
-    void LogAttributeDifference(
-        const PrimitiveDiagnostic& lhs,
-        const PrimitiveDiagnostic& rhs,
-        const AttributeComparison& comparison
-    ) {
-        Logger::Log(
-            Logger::LOG,
-            "Primitive attribute candidate '{}' vs '{}': "
-            "position/topology=same, normals={}, uvs={}, tangents={}",
-            lhs.name,
-            rhs.name,
-            comparison.normalsSame ? "same" : "DIFFERENT",
-            comparison.uvsSame ? "same" : "DIFFERENT",
-            comparison.tangentsSame ? "same" : "DIFFERENT"
-        );
-
-        if (!comparison.normalsSame) {
-            const DiagnosticCorner& a =
-                lhs.triangles[comparison.normalTriangle]
-                    .corners[comparison.normalCorner];
-
-            const DiagnosticCorner& b =
-                rhs.triangles[comparison.normalTriangle]
-                    .corners[comparison.normalCorner];
-
-            Logger::Log(
-                Logger::LOG,
-                "  first normal difference at triangle {}, corner {}: "
-                "({}, {}, {}) vs ({}, {}, {})",
-                comparison.normalTriangle,
-                comparison.normalCorner,
-                DiagnosticFloat(a.normal[0]),
-                DiagnosticFloat(a.normal[1]),
-                DiagnosticFloat(a.normal[2]),
-                DiagnosticFloat(b.normal[0]),
-                DiagnosticFloat(b.normal[1]),
-                DiagnosticFloat(b.normal[2])
-            );
-        }
-
-        if (!comparison.uvsSame) {
-            const DiagnosticCorner& a =
-                lhs.triangles[comparison.uvTriangle]
-                    .corners[comparison.uvCorner];
-
-            const DiagnosticCorner& b =
-                rhs.triangles[comparison.uvTriangle]
-                    .corners[comparison.uvCorner];
-
-            Logger::Log(
-                Logger::LOG,
-                "  first UV difference at triangle {}, corner {}: "
-                "({}, {}) vs ({}, {})",
-                comparison.uvTriangle,
-                comparison.uvCorner,
-                DiagnosticFloat(a.uv[0]),
-                DiagnosticFloat(a.uv[1]),
-                DiagnosticFloat(b.uv[0]),
-                DiagnosticFloat(b.uv[1])
-            );
-        }
-
-        if (!comparison.tangentsSame) {
-            const DiagnosticCorner& a =
-                lhs.triangles[comparison.tangentTriangle]
-                    .corners[comparison.tangentCorner];
-
-            const DiagnosticCorner& b =
-                rhs.triangles[comparison.tangentTriangle]
-                    .corners[comparison.tangentCorner];
-
-            Logger::Log(
-                Logger::LOG,
-                "  first tangent difference at triangle {}, corner {}: "
-                "({}, {}, {}, {}) vs ({}, {}, {}, {})",
-                comparison.tangentTriangle,
-                comparison.tangentCorner,
-                DiagnosticFloat(a.tangent[0]),
-                DiagnosticFloat(a.tangent[1]),
-                DiagnosticFloat(a.tangent[2]),
-                DiagnosticFloat(a.tangent[3]),
-                DiagnosticFloat(b.tangent[0]),
-                DiagnosticFloat(b.tangent[1]),
-                DiagnosticFloat(b.tangent[2]),
-                DiagnosticFloat(b.tangent[3])
-            );
-        }
-    }
-
-    constexpr double RIGID_EDGE_QUANTIZATION = 100000.0;
-
-    uint64_t QuantizeEdgeLength(
-        const glm::vec3& a,
-        const glm::vec3& b
-    ) {
-        const double length =
-            static_cast<double>(glm::length(b - a));
-
-        return static_cast<uint64_t>(
-            std::llround(length * RIGID_EDGE_QUANTIZATION)
-        );
-    }
-
-    RigidShapeDiagnostic BuildRigidShapeDiagnostic(
-        std::string name,
-        const std::vector<Vertex>& vertices,
-        const std::vector<uint32_t>& indices,
-        uint64_t positionTopologyHash
-    ) {
-        RigidShapeDiagnostic diagnostic;
-        diagnostic.name = std::move(name);
-        diagnostic.vertexCount = vertices.size();
-        diagnostic.indexCount = indices.size();
-        diagnostic.positionTopologyHash =
-            positionTopologyHash;
-
-        diagnostic.triangleEdges.reserve(
-            indices.size() / 3
-        );
-
-        for (std::size_t i = 0;
-             i + 2 < indices.size();
-             i += 3) {
-            const glm::vec3& p0 =
-                vertices[indices[i]].pos;
-
-            const glm::vec3& p1 =
-                vertices[indices[i + 1]].pos;
-
-            const glm::vec3& p2 =
-                vertices[indices[i + 2]].pos;
-
-            std::array<uint64_t, 3> edges {
-                QuantizeEdgeLength(p0, p1),
-                QuantizeEdgeLength(p1, p2),
-                QuantizeEdgeLength(p2, p0)
-            };
-
-            std::sort(edges.begin(), edges.end());
-            diagnostic.triangleEdges.push_back(edges);
-        }
-
-        std::sort(
-            diagnostic.triangleEdges.begin(),
-            diagnostic.triangleEdges.end()
-        );
-
-        uint64_t hash = FNV_OFFSET_BASIS;
-
-        HashUint64(
-            hash,
-            static_cast<uint64_t>(diagnostic.vertexCount)
-        );
-
-        HashUint64(
-            hash,
-            static_cast<uint64_t>(diagnostic.indexCount)
-        );
-
-        for (const auto& triangle :
-             diagnostic.triangleEdges) {
-            HashUint64(hash, triangle[0]);
-            HashUint64(hash, triangle[1]);
-            HashUint64(hash, triangle[2]);
-        }
-
-        diagnostic.shapeHash = hash;
-        return diagnostic;
-    }
-
-    constexpr double SCALE_EDGE_QUANTIZATION = 1000000.0;
-
-    ScaledShapeDiagnostic BuildScaledShapeDiagnostic(
-        std::string name,
-        const std::vector<Vertex>& vertices,
-        const std::vector<uint32_t>& indices
-    ) {
-        ScaledShapeDiagnostic diagnostic;
-        diagnostic.name = std::move(name);
-        diagnostic.vertexCount = vertices.size();
-        diagnostic.indexCount = indices.size();
-
-        std::vector<std::array<double, 3>> triangleEdges;
-        triangleEdges.reserve(indices.size() / 3);
-
-        double longestEdge = 0.0;
-
-        for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
-            const glm::vec3& p0 = vertices[indices[i]].pos;
-            const glm::vec3& p1 = vertices[indices[i + 1]].pos;
-            const glm::vec3& p2 = vertices[indices[i + 2]].pos;
-
-            std::array<double, 3> edges {
-                static_cast<double>(glm::length(p1 - p0)),
-                static_cast<double>(glm::length(p2 - p1)),
-                static_cast<double>(glm::length(p0 - p2))
-            };
-
-            std::sort(edges.begin(), edges.end());
-            longestEdge = std::max(longestEdge, edges[2]);
-            triangleEdges.push_back(edges);
-        }
-
-        diagnostic.referenceEdgeLength = longestEdge;
-
-        if (longestEdge <= 0.0) {
-            return diagnostic;
-        }
-
-        diagnostic.normalizedTriangleEdges.reserve(
-            triangleEdges.size()
-        );
-
-        for (const auto& edges : triangleEdges) {
-            std::array<uint64_t, 3> normalized {
-                static_cast<uint64_t>(std::llround(
-                    (edges[0] / longestEdge) *
-                    SCALE_EDGE_QUANTIZATION
-                )),
-                static_cast<uint64_t>(std::llround(
-                    (edges[1] / longestEdge) *
-                    SCALE_EDGE_QUANTIZATION
-                )),
-                static_cast<uint64_t>(std::llround(
-                    (edges[2] / longestEdge) *
-                    SCALE_EDGE_QUANTIZATION
-                ))
-            };
-
-            diagnostic.normalizedTriangleEdges.push_back(
-                normalized
-            );
-        }
-
-        std::sort(
-            diagnostic.normalizedTriangleEdges.begin(),
-            diagnostic.normalizedTriangleEdges.end()
-        );
-
-        uint64_t hash = FNV_OFFSET_BASIS;
-
-        HashUint64(
-            hash,
-            static_cast<uint64_t>(diagnostic.vertexCount)
-        );
-
-        HashUint64(
-            hash,
-            static_cast<uint64_t>(diagnostic.indexCount)
-        );
-
-        for (const auto& triangle :
-             diagnostic.normalizedTriangleEdges) {
-            HashUint64(hash, triangle[0]);
-            HashUint64(hash, triangle[1]);
-            HashUint64(hash, triangle[2]);
-        }
-
-        diagnostic.normalizedShapeHash = hash;
-        return diagnostic;
+        vertices = std::move(uniqueVertices);
     }
 
     uint64_t HashRawTopology(
@@ -1204,30 +803,12 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
     std::vector<std::vector<LoadedPrimitive>> loadedMeshes(asset.meshes.size());
     std::unordered_map<uint64_t, std::vector<CachedGeometry>> geometryCache;
-    std::unordered_map<uint64_t, std::vector<PrimitiveDiagnostic>>
-        attributeDiagnosticCache;
-    std::unordered_map<uint64_t, std::vector<RigidShapeDiagnostic>>
-        rigidShapeDiagnosticCache;
-    std::unordered_map<uint64_t, std::vector<ScaledShapeDiagnostic>>
-        scaledShapeDiagnosticCache;
-    std::unordered_map<uint64_t, std::vector<AffineDiagnostic>>
-        affineDiagnosticCache;
     std::unordered_map<uint64_t, std::vector<AffineCachedGeometry>>
         affineGeometryCache;
     std::unordered_set<MaterialID> modelMaterialIDs;
+
+    VertexDedupStats vertexDedupStats;
     GeometryDedupStats dedupStats;
-
-    std::size_t attributeDifferencePairs = 0;
-    std::size_t rigidShapePairs = 0;
-    std::size_t uniformScalePairs = 0;
-    std::size_t affinePairs = 0;
-    std::size_t affineAcceptedLogs = 0;
-
-    constexpr std::size_t MAX_ATTRIBUTE_DIAGNOSTIC_LOGS = 32;
-    constexpr std::size_t MAX_RIGID_SHAPE_DIAGNOSTIC_LOGS = 32;
-    constexpr std::size_t MAX_SCALE_DIAGNOSTIC_LOGS = 32;
-    constexpr std::size_t MAX_AFFINE_DIAGNOSTIC_LOGS = 32;
-    constexpr std::size_t MAX_AFFINE_ACCEPTED_LOGS = 32;
 
     for (std::size_t meshIndex = 0; meshIndex < asset.meshes.size(); ++meshIndex) {
         const auto& gltfMesh = asset.meshes[meshIndex];
@@ -1458,6 +1039,21 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 }
             );
 
+            const std::size_t decodedVertexCount =
+                vertices.size();
+
+            const std::size_t decodedGeometryBytes =
+                vertices.size() * sizeof(Vertex) +
+                indices.size() * sizeof(uint32_t);
+
+            DeduplicateVertices(vertices, indices);
+
+            vertexDedupStats.inputVertices +=
+                decodedVertexCount;
+
+            vertexDedupStats.outputVertices +=
+                vertices.size();
+
             std::string primitiveName(
                 gltfMesh.name.data(),
                 gltfMesh.name.size()
@@ -1472,224 +1068,6 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 " Primitive " +
                 std::to_string(primitiveIndex);
 
-            PrimitiveDiagnostic diagnostic =
-                BuildPrimitiveDiagnostic(
-                    primitiveName,
-                    vertices,
-                    indices
-                );
-
-            auto& diagnosticCandidates =
-                attributeDiagnosticCache[
-                    diagnostic.positionTopologyHash
-                ];
-
-            for (const PrimitiveDiagnostic& candidate :
-                 diagnosticCandidates) {
-                const AttributeComparison comparison =
-                    ComparePrimitiveAttributes(
-                        candidate,
-                        diagnostic
-                    );
-
-                if (!comparison.positionTopologySame ||
-                    (comparison.normalsSame &&
-                     comparison.uvsSame &&
-                     comparison.tangentsSame)) {
-                    continue;
-                }
-
-                ++attributeDifferencePairs;
-
-                if (attributeDifferencePairs <=
-                    MAX_ATTRIBUTE_DIAGNOSTIC_LOGS) {
-                    LogAttributeDifference(
-                        candidate,
-                        diagnostic,
-                        comparison
-                    );
-                }
-            }
-
-            RigidShapeDiagnostic rigidDiagnostic =
-                BuildRigidShapeDiagnostic(
-                    primitiveName,
-                    vertices,
-                    indices,
-                    diagnostic.positionTopologyHash
-                );
-
-            auto& rigidCandidates =
-                rigidShapeDiagnosticCache[
-                    rigidDiagnostic.shapeHash
-                ];
-
-            for (const RigidShapeDiagnostic& candidate :
-                 rigidCandidates) {
-                if (candidate.triangleEdges !=
-                    rigidDiagnostic.triangleEdges) {
-                    continue;
-                }
-
-                // Same translated position/topology was already handled by
-                // the existing diagnostics/dedup path. A different position
-                // signature with the same edge lengths is the interesting
-                // rotation/reflection case.
-                if (candidate.positionTopologyHash ==
-                    rigidDiagnostic.positionTopologyHash) {
-                    continue;
-                }
-
-                ++rigidShapePairs;
-
-                if (rigidShapePairs <=
-                    MAX_RIGID_SHAPE_DIAGNOSTIC_LOGS) {
-                    Logger::Log(
-                        Logger::LOG,
-                        "Rigid-shape candidate '{}' vs '{}': same quantized "
-                        "triangle edge-length signature but different "
-                        "position/topology; likely baked rotation/reflection "
-                        "(diagnostic only)",
-                        candidate.name,
-                        rigidDiagnostic.name
-                    );
-                }
-            }
-
-            rigidCandidates.push_back(
-                std::move(rigidDiagnostic)
-            );
-
-            ScaledShapeDiagnostic scaledDiagnostic =
-                BuildScaledShapeDiagnostic(
-                    primitiveName,
-                    vertices,
-                    indices
-                );
-
-            if (scaledDiagnostic.referenceEdgeLength > 0.0) {
-                auto& scaledCandidates =
-                    scaledShapeDiagnosticCache[
-                        scaledDiagnostic.normalizedShapeHash
-                    ];
-
-                for (const ScaledShapeDiagnostic& candidate :
-                     scaledCandidates) {
-                    if (candidate.normalizedTriangleEdges !=
-                        scaledDiagnostic.normalizedTriangleEdges) {
-                        continue;
-                    }
-
-                    const double scaleRatio =
-                        scaledDiagnostic.referenceEdgeLength /
-                        candidate.referenceEdgeLength;
-
-                    if (std::abs(scaleRatio - 1.0) < 1e-5) {
-                        continue;
-                    }
-
-                    ++uniformScalePairs;
-
-                    if (uniformScalePairs <=
-                        MAX_SCALE_DIAGNOSTIC_LOGS) {
-                        Logger::Log(
-                            Logger::LOG,
-                            "Uniform-scale candidate '{}' vs '{}': same "
-                            "normalized triangle edge signature, estimated "
-                            "scale ratio {:.6f} (diagnostic only)",
-                            candidate.name,
-                            scaledDiagnostic.name,
-                            scaleRatio
-                        );
-                    }
-                }
-
-                scaledCandidates.push_back(
-                    std::move(scaledDiagnostic)
-                );
-            }
-
-            AffineDiagnostic affineDiagnostic;
-            affineDiagnostic.name = primitiveName;
-            affineDiagnostic.indices = indices;
-            affineDiagnostic.positions.reserve(vertices.size());
-
-            for (const Vertex& vertex : vertices) {
-                affineDiagnostic.positions.push_back(vertex.pos);
-            }
-
-            affineDiagnostic.topologyHash =
-                HashRawTopology(
-                    affineDiagnostic.positions.size(),
-                    affineDiagnostic.indices
-                );
-
-            auto& affineCandidates =
-                affineDiagnosticCache[
-                    affineDiagnostic.topologyHash
-                ];
-
-            for (const AffineDiagnostic& candidate :
-                 affineCandidates) {
-                AffineMatch match;
-
-                if (!RecoverAffineTransform(
-                        candidate,
-                        affineDiagnostic,
-                        match)) {
-                    continue;
-                }
-
-                const glm::vec3 scale =
-                    AffineColumnScale(match.linear);
-
-                const float uniformity =
-                    std::max({
-                        std::abs(scale.x - scale.y),
-                        std::abs(scale.x - scale.z),
-                        std::abs(scale.y - scale.z)
-                    });
-
-                // Rigid/uniform-scale cases are already covered by the
-                // preceding diagnostics. Keep this log focused on the
-                // remaining non-uniform/sheared affine transforms.
-                if (uniformity <= 1e-4f) {
-                    continue;
-                }
-
-                ++affinePairs;
-
-                if (affinePairs <=
-                    MAX_AFFINE_DIAGNOSTIC_LOGS) {
-                    Logger::Log(
-                        Logger::LOG,
-                        "Affine-shape candidate '{}' vs '{}': exact raw "
-                        "topology/order and all positions match after an "
-                        "affine transform. column scales=({}, {}, {}), "
-                        "translation=({}, {}, {}), max error={}. "
-                        "Likely baked non-uniform scale/shear "
-                        "(diagnostic only)",
-                        candidate.name,
-                        affineDiagnostic.name,
-                        scale.x,
-                        scale.y,
-                        scale.z,
-                        match.translation.x,
-                        match.translation.y,
-                        match.translation.z,
-                        match.maxError
-                    );
-                }
-            }
-
-            affineCandidates.push_back(
-                std::move(affineDiagnostic)
-            );
-
-            diagnosticCandidates.push_back(
-                std::move(diagnostic)
-            );
-
             const MaterialID materialID =
                 GetOrCreateMaterial(materialDescription);
 
@@ -1700,7 +1078,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 indices.size() * sizeof(uint32_t);
 
             ++dedupStats.primitiveCount;
-            dedupStats.sourceBytes += geometryBytes;
+            dedupStats.sourceBytes += decodedGeometryBytes;
 
             glm::vec3 geometryOrigin{0.0f};
 
@@ -1802,32 +1180,6 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                     ++dedupStats.reusedGeometryCount;
                     ++dedupStats.affineReuseCount;
 
-                    if (affineAcceptedLogs <
-                        MAX_AFFINE_ACCEPTED_LOGS) {
-                        const glm::vec3 scale =
-                            AffineColumnScale(
-                                match.linear
-                            );
-
-                        Logger::Log(
-                            Logger::LOG,
-                            "Affine dedup accepted '{}' -> '{}': "
-                            "reusing GPU mesh, column scales=({}, {}, {}), "
-                            "translation=({}, {}, {}), max position error={}",
-                            primitiveName,
-                            candidate.name,
-                            scale.x,
-                            scale.y,
-                            scale.z,
-                            match.translation.x,
-                            match.translation.y,
-                            match.translation.z,
-                            match.maxError
-                        );
-
-                        ++affineAcceptedLogs;
-                    }
-
                     break;
                 }
             }
@@ -1923,103 +1275,6 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
         }
     );
 
-    if (attributeDifferencePairs > 0) {
-        Logger::Log(
-            Logger::LOG,
-            "Primitive attribute diagnostics '{}': found {} pair(s) with "
-            "matching translated position/topology but differing vertex "
-            "attributes; logged first {}",
-            normalizedPath.string(),
-            attributeDifferencePairs,
-            std::min(
-                attributeDifferencePairs,
-                MAX_ATTRIBUTE_DIAGNOSTIC_LOGS
-            )
-        );
-    } else {
-        Logger::Log(
-            Logger::LOG,
-            "Primitive attribute diagnostics '{}': no primitives shared "
-            "translated position/topology while differing only in normal/UV/"
-            "tangent attributes",
-            normalizedPath.string()
-        );
-    }
-
-    if (rigidShapePairs > 0) {
-        Logger::Log(
-            Logger::LOG,
-            "Rigid-shape diagnostics '{}': found {} pair(s) with matching "
-            "triangle edge-length signatures but different position/topology; "
-            "logged first {}. These are candidates for baked "
-            "rotation/reflection, not automatic deduplication yet.",
-            normalizedPath.string(),
-            rigidShapePairs,
-            std::min(
-                rigidShapePairs,
-                MAX_RIGID_SHAPE_DIAGNOSTIC_LOGS
-            )
-        );
-    } else {
-        Logger::Log(
-            Logger::LOG,
-            "Rigid-shape diagnostics '{}': no rotation/reflection candidates "
-            "found from triangle edge-length signatures",
-            normalizedPath.string()
-        );
-    }
-
-    if (uniformScalePairs > 0) {
-        Logger::Log(
-            Logger::LOG,
-            "Uniform-scale diagnostics '{}': found {} pair(s) matching after "
-            "uniform scale normalization; logged first {}",
-            normalizedPath.string(),
-            uniformScalePairs,
-            std::min(
-                uniformScalePairs,
-                MAX_SCALE_DIAGNOSTIC_LOGS
-            )
-        );
-    } else {
-        Logger::Log(
-            Logger::LOG,
-            "Uniform-scale diagnostics '{}': no additional uniform-scale "
-            "duplicates found",
-            normalizedPath.string()
-        );
-    }
-
-    if (affinePairs > 0) {
-        Logger::Log(
-            Logger::LOG,
-            "Affine-shape diagnostics '{}': found {} pair(s) whose positions "
-            "are reproduced by a verified non-uniform affine transform with "
-            "matching raw topology/order; logged first {}",
-            normalizedPath.string(),
-            affinePairs,
-            std::min(
-                affinePairs,
-                MAX_AFFINE_DIAGNOSTIC_LOGS
-            )
-        );
-    } else {
-        Logger::Log(
-            Logger::LOG,
-            "Affine-shape diagnostics '{}': no verified non-uniform affine "
-            "duplicates found among primitives with matching raw topology/order",
-            normalizedPath.string()
-        );
-    }
-
-    Logger::Log(
-        Logger::LOG,
-        "Verified affine dedup '{}': {} primitive(s) reused after position, "
-        "UV, normal, tangent, and topology verification",
-        normalizedPath.string(),
-        dedupStats.affineReuseCount
-    );
-
     const double primitiveReduction =
         dedupStats.primitiveCount == 0
             ? 0.0
@@ -2035,13 +1290,29 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
     constexpr double bytesPerMiB = 1024.0 * 1024.0;
 
+    const std::size_t removedVertices =
+        vertexDedupStats.inputVertices -
+        vertexDedupStats.outputVertices;
+
+    const double vertexReduction =
+        vertexDedupStats.inputVertices == 0
+            ? 0.0
+            : (static_cast<double>(removedVertices) /
+               static_cast<double>(
+                   vertexDedupStats.inputVertices
+               )) * 100.0;
+
     Logger::Log(
         Logger::LOG,
-        "Geometry dedup '{}': {} glTF primitives -> {} unique GPU meshes "
-        "({} reused, {} via baked translation, {} via verified affine "
-        "transform, {:.1f}% reduction), upload data {:.2f} MiB -> {:.2f} MiB "
-        "({:.1f}% reduction)",
+        "Mesh optimization '{}': vertices {} -> {} ({} removed, {:.1f}%); "
+        "primitives {} -> {} unique GPU meshes ({} reused: {} translation, "
+        "{} affine, {:.1f}%); geometry data {:.2f} MiB -> {:.2f} MiB "
+        "({:.1f}% total reduction)",
         normalizedPath.string(),
+        vertexDedupStats.inputVertices,
+        vertexDedupStats.outputVertices,
+        removedVertices,
+        vertexReduction,
         dedupStats.primitiveCount,
         dedupStats.uniqueGeometryCount,
         dedupStats.reusedGeometryCount,
