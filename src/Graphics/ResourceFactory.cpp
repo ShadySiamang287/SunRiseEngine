@@ -170,10 +170,21 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
         vertexInputInfo.vertexBindingDescriptionCount = 1;
         vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
 
+        const uint32_t attributeCount =
+            std::min(
+                config.vertexAttributeCount,
+                static_cast<uint32_t>(
+                    attributeDescriptions.size()
+                )
+            );
+
         vertexInputInfo.vertexAttributeDescriptionCount =
-            static_cast<uint32_t>(attributeDescriptions.size());
+            attributeCount;
+
         vertexInputInfo.pVertexAttributeDescriptions =
-            attributeDescriptions.data();
+            attributeCount > 0
+                ? attributeDescriptions.data()
+                : nullptr;
     }
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = config.primitiveTopology};

@@ -32,6 +32,7 @@ ShadowPass::ShadowPass(AssetManager& assetManager)
         .depthAttachmentFormat =
             vk::Format::eD32Sfloat,
         .useVertexInput = true,
+        .vertexAttributeCount = 1,
         .depthBiasEnable = true
     };
 

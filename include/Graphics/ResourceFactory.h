@@ -30,6 +30,7 @@ namespace SUN {
         vk::Format stencilAttachmentFormat = vk::Format::eUndefined;
 
         bool useVertexInput = true;
+        uint32_t vertexAttributeCount = 4;
         bool depthBiasEnable = false;
     };
 
