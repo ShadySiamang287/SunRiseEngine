@@ -136,6 +136,7 @@ void ShadowPass::CreateShadowMaps() {
 
 void ShadowPass::Prepare(
     std::span<const ObjectData> objects,
+    uint32_t frameIndex,
     const Camera& camera,
     std::span<GPUDirectionalLight> directionalLights,
     std::span<GPUPointLight> pointLights
@@ -185,21 +186,23 @@ void ShadowPass::Prepare(
             };
         }
 
-        if (!mIndirectCommands.empty()) {
-            const size_t uploadSize =
-                mIndirectCommands.size() *
-                sizeof(vk::DrawIndexedIndirectCommand);
+        ++mDrawLayoutGeneration;
+    }
 
-            for (uint32_t frameIndex = 0;
-                 frameIndex < MAX_FRAMES_IN_FLIGHT;
-                 ++frameIndex) {
-                mIndirectBuffer.Upload(
-                    frameIndex,
-                    mIndirectCommands.data(),
-                    uploadSize
-                );
-            }
-        }
+    if (
+        !mIndirectCommands.empty() &&
+        mUploadedDrawLayoutGeneration[frameIndex] !=
+            mDrawLayoutGeneration
+    ) {
+        mIndirectBuffer.Upload(
+            frameIndex,
+            mIndirectCommands.data(),
+            mIndirectCommands.size() *
+                sizeof(vk::DrawIndexedIndirectCommand)
+        );
+
+        mUploadedDrawLayoutGeneration[frameIndex] =
+            mDrawLayoutGeneration;
     }
 
     mObjectCount =
@@ -398,37 +401,44 @@ void ShadowPass::Execute(
     // All shadow maps are written before any of them are sampled,
     // so transition the active set together instead of issuing one
     // pipeline barrier per light.
-    std::vector<ImageTransition> transitions;
-    transitions.reserve(
-        mDirectionalShadowCount +
-        mPointShadowCount
-    );
+    std::array<
+        ImageTransition,
+        MAX_SHADOW_DIRECTIONAL_LIGHTS +
+            MAX_SHADOW_POINT_LIGHTS
+    > transitions{};
+
+    uint32_t transitionCount = 0;
 
     for (uint32_t i = 0;
          i < mDirectionalShadowCount;
          ++i) {
-        transitions.push_back({
+        transitions[transitionCount++] = {
             &mDirectionalShadowMaps[i],
             vk::ImageLayout::eDepthAttachmentOptimal,
             vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
             vk::PipelineStageFlagBits2::eEarlyFragmentTests |
                 vk::PipelineStageFlagBits2::eLateFragmentTests
-        });
+        };
     }
 
     for (uint32_t i = 0;
          i < mPointShadowCount;
          ++i) {
-        transitions.push_back({
+        transitions[transitionCount++] = {
             &mPointShadowMaps[i],
             vk::ImageLayout::eDepthAttachmentOptimal,
             vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
             vk::PipelineStageFlagBits2::eEarlyFragmentTests |
                 vk::PipelineStageFlagBits2::eLateFragmentTests
-        });
+        };
     }
 
-    GraphicsCommands::TransitionImages(transitions);
+    GraphicsCommands::TransitionImages(
+        std::span<const ImageTransition>(
+            transitions.data(),
+            transitionCount
+        )
+    );
 
     const std::string drawLabel =
         "Depth indirect draw (" +
@@ -537,31 +547,36 @@ void ShadowPass::Execute(
         GraphicsCommands::EndLabel();
     }
 
-    transitions.clear();
+    transitionCount = 0;
 
     for (uint32_t i = 0;
          i < mDirectionalShadowCount;
          ++i) {
-        transitions.push_back({
+        transitions[transitionCount++] = {
             &mDirectionalShadowMaps[i],
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::AccessFlagBits2::eShaderRead,
             vk::PipelineStageFlagBits2::eFragmentShader
-        });
+        };
     }
 
     for (uint32_t i = 0;
          i < mPointShadowCount;
          ++i) {
-        transitions.push_back({
+        transitions[transitionCount++] = {
             &mPointShadowMaps[i],
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::AccessFlagBits2::eShaderRead,
             vk::PipelineStageFlagBits2::eFragmentShader
-        });
+        };
     }
 
-    GraphicsCommands::TransitionImages(transitions);
+    GraphicsCommands::TransitionImages(
+        std::span<const ImageTransition>(
+            transitions.data(),
+            transitionCount
+        )
+    );
 
     GraphicsCommands::EndLabel();
 }

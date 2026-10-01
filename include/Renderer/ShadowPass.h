@@ -21,6 +21,7 @@ namespace SUN {
 
         void Prepare(
             std::span<const ObjectData> objects,
+            uint32_t frameIndex,
             const Camera& camera,
             std::span<GPUDirectionalLight> directionalLights,
             std::span<GPUPointLight> pointLights
@@ -96,6 +97,12 @@ namespace SUN {
         ShaderBuffer mIndirectBuffer;
         std::vector<vk::DrawIndexedIndirectCommand>
             mIndirectCommands;
+
+        uint64_t mDrawLayoutGeneration = 1;
+        std::array<
+            uint64_t,
+            MAX_FRAMES_IN_FLIGHT
+        > mUploadedDrawLayoutGeneration{};
 
         uint32_t mObjectCount = 0;
         uint32_t mDirectionalShadowCount = 0;

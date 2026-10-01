@@ -118,6 +118,7 @@ void Renderer3D::EndScene(RenderContext& context) {
 
     mShadowPass->Prepare(
         mRenderQueue.GetObjects(),
+        context.frameIndex,
         *mCamera,
         mDirectionalLights,
         mPointLights
