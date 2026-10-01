@@ -127,7 +127,12 @@ void SSAOPass::Execute(const RenderContext& context, const PushConstants& pushCo
     GraphicsCommands::BindPipeline(mPipeline);
     GraphicsCommands::BindDescriptorSets(mLayout, mDescriptors);
     GraphicsCommands::PushConstants(mLayout, vk::ShaderStageFlagBits::eFragment, pushConstants);
+    GraphicsCommands::BeginLabel(
+        "SSAO fullscreen draw",
+        {0.72f, 0.42f, 1.0f, 1.0f}
+    );
     GraphicsCommands::DrawFullScreenTriangle();
+    GraphicsCommands::EndLabel();
     GraphicsCommands::EndRendering();
     GraphicsCommands::TransitionImage(
         mAOImages[context.frameIndex],

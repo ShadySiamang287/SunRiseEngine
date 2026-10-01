@@ -193,7 +193,12 @@ void LightingPass::Execute(const RenderContext& context, const PushConstants& pu
 
     GraphicsCommands::PushConstants(mLayout, vk::ShaderStageFlagBits::eFragment, pushConstants);
 
+    GraphicsCommands::BeginLabel(
+        "Deferred lighting fullscreen draw",
+        {0.9F, 0.45F, 0.45F, 1.F}
+    );
     GraphicsCommands::DrawFullScreenTriangle();
+    GraphicsCommands::EndLabel();
 
     GraphicsCommands::EndRendering();
 

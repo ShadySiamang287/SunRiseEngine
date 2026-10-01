@@ -117,7 +117,13 @@ void BloomPass::Execute(const PostProcessContext& context) {
 
     GraphicsCommands::BindDescriptorSets(mLayout, mHorizontalDescriptors);
 
+    GraphicsCommands::BeginLabel(
+        "Bloom horizontal blur draw",
+        {0.4F, 0.85F, 0.85F, 1.F}
+    );
     GraphicsCommands::DrawFullScreenTriangle();
+    GraphicsCommands::EndLabel();
+
     GraphicsCommands::EndRendering();
 
     const std::array<ImageTransition, 2>
@@ -165,13 +171,19 @@ void BloomPass::Execute(const PostProcessContext& context) {
 
     GraphicsCommands::BeginRendering(verticalInfo);
 
-    GraphicsCommands::SetViewportAndScissor(mBlurVertical[frameIndex].extent);
-
+    // Horizontal and vertical bloom targets have identical extents,
+    // so the viewport/scissor set for the horizontal pass remains valid.
     GraphicsCommands::PushBloomConstants(mLayout, false);
 
     GraphicsCommands::BindDescriptorSets(mLayout, mVerticalDescriptors);
 
+    GraphicsCommands::BeginLabel(
+        "Bloom vertical blur draw",
+        {0.45F, 0.9F, 0.9F, 1.F}
+    );
     GraphicsCommands::DrawFullScreenTriangle();
+    GraphicsCommands::EndLabel();
+
     GraphicsCommands::EndRendering();
 
     GraphicsCommands::TransitionImage(

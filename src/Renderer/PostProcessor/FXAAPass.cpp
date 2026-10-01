@@ -137,7 +137,12 @@ void FXAAPass::Execute(const PostProcessContext& context) {
 
     GraphicsCommands::BindDescriptorSets(mLayout, mDescriptors);
 
+    GraphicsCommands::BeginLabel(
+        "FXAA fullscreen draw",
+        {0.9F, 0.45F, 0.7F, 1.F}
+    );
     GraphicsCommands::DrawFullScreenTriangle();
+    GraphicsCommands::EndLabel();
     GraphicsCommands::EndRendering();
 
     GraphicsCommands::EndLabel();

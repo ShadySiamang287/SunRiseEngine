@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 using namespace SUN;
 
@@ -139,42 +140,70 @@ void ShadowPass::Prepare(
     std::span<GPUDirectionalLight> directionalLights,
     std::span<GPUPointLight> pointLights
 ) {
-    mIndirectCommands.clear();
-
     const std::size_t objectCount =
         std::min(
             objects.size(),
             static_cast<std::size_t>(MAX_OBJECTS)
         );
 
-    mIndirectCommands.reserve(objectCount);
+    bool drawLayoutChanged =
+        mIndirectCommands.size() != objectCount;
 
-    for (uint32_t i = 0;
-         i < static_cast<uint32_t>(objectCount);
-         ++i) {
-        const ObjectData& object = objects[i];
+    if (!drawLayoutChanged) {
+        for (uint32_t i = 0;
+             i < static_cast<uint32_t>(objectCount);
+             ++i) {
+            const ObjectData& object = objects[i];
+            const auto& command = mIndirectCommands[i];
 
-        mIndirectCommands.push_back({
-            .indexCount = object.indexCount,
-            .instanceCount = 1,
-            .firstIndex = object.firstIndex,
-            .vertexOffset = object.vertexOffset,
-            .firstInstance = i
-        });
+            if (
+                command.indexCount != object.indexCount ||
+                command.firstIndex != object.firstIndex ||
+                command.vertexOffset != object.vertexOffset ||
+                command.firstInstance != i
+            ) {
+                drawLayoutChanged = true;
+                break;
+            }
+        }
+    }
+
+    if (drawLayoutChanged) {
+        mIndirectCommands.resize(objectCount);
+
+        for (uint32_t i = 0;
+             i < static_cast<uint32_t>(objectCount);
+             ++i) {
+            const ObjectData& object = objects[i];
+
+            mIndirectCommands[i] = {
+                .indexCount = object.indexCount,
+                .instanceCount = 1,
+                .firstIndex = object.firstIndex,
+                .vertexOffset = object.vertexOffset,
+                .firstInstance = i
+            };
+        }
+
+        if (!mIndirectCommands.empty()) {
+            const size_t uploadSize =
+                mIndirectCommands.size() *
+                sizeof(vk::DrawIndexedIndirectCommand);
+
+            for (uint32_t frameIndex = 0;
+                 frameIndex < MAX_FRAMES_IN_FLIGHT;
+                 ++frameIndex) {
+                mIndirectBuffer.Upload(
+                    frameIndex,
+                    mIndirectCommands.data(),
+                    uploadSize
+                );
+            }
+        }
     }
 
     mObjectCount =
-        static_cast<uint32_t>(
-            mIndirectCommands.size()
-        );
-
-    if (!mIndirectCommands.empty()) {
-        mIndirectBuffer.Upload(
-            mIndirectCommands.data(),
-            mIndirectCommands.size() *
-                sizeof(vk::DrawIndexedIndirectCommand)
-        );
-    }
+        static_cast<uint32_t>(objectCount);
 
     mDirectionalShadowCount = 0;
 
@@ -338,7 +367,13 @@ ShadowPass::BuildPointMatrices(
 void ShadowPass::Execute(
     const PushConstants& pushConstants
 ) {
-    if (mObjectCount == 0) {
+    if (
+        mObjectCount == 0 ||
+        (
+            mDirectionalShadowCount == 0 &&
+            mPointShadowCount == 0
+        )
+    ) {
         return;
     }
 
@@ -360,69 +395,173 @@ void ShadowPass::Execute(
         1.75f
     );
 
+    // All shadow maps are written before any of them are sampled,
+    // so transition the active set together instead of issuing one
+    // pipeline barrier per light.
+    std::vector<ImageTransition> transitions;
+    transitions.reserve(
+        mDirectionalShadowCount +
+        mPointShadowCount
+    );
+
     for (uint32_t i = 0;
          i < mDirectionalShadowCount;
          ++i) {
-        RenderImage& shadowMap =
-            mDirectionalShadowMaps[i];
-
-        GraphicsCommands::TransitionImage(
-            shadowMap,
+        transitions.push_back({
+            &mDirectionalShadowMaps[i],
             vk::ImageLayout::eDepthAttachmentOptimal,
             vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
             vk::PipelineStageFlagBits2::eEarlyFragmentTests |
                 vk::PipelineStageFlagBits2::eLateFragmentTests
-        );
-
-        RenderShadowMap(
-            *shadowMap.image.view,
-            shadowMap.extent,
-            mDirectionalMatrices[i],
-            pushConstants.objectDataAddress
-        );
-
-        GraphicsCommands::TransitionImage(
-            shadowMap,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            vk::AccessFlagBits2::eShaderRead,
-            vk::PipelineStageFlagBits2::eFragmentShader
-        );
+        });
     }
 
     for (uint32_t i = 0;
          i < mPointShadowCount;
          ++i) {
-        RenderImage& shadowMap =
-            mPointShadowMaps[i];
-
-        GraphicsCommands::TransitionImage(
-            shadowMap,
+        transitions.push_back({
+            &mPointShadowMaps[i],
             vk::ImageLayout::eDepthAttachmentOptimal,
             vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
             vk::PipelineStageFlagBits2::eEarlyFragmentTests |
                 vk::PipelineStageFlagBits2::eLateFragmentTests
+        });
+    }
+
+    GraphicsCommands::TransitionImages(transitions);
+
+    const std::string drawLabel =
+        "Depth indirect draw (" +
+        std::to_string(mObjectCount) +
+        " commands)";
+
+    if (mDirectionalShadowCount > 0) {
+        GraphicsCommands::BeginLabel(
+            "Directional shadows (" +
+                std::to_string(
+                    mDirectionalShadowCount
+                ) +
+                ")",
+            {0.45f, 0.45f, 0.75f, 1.0f}
         );
 
-        for (uint32_t face = 0;
-             face < 6;
-             ++face) {
-            RenderShadowMap(
-                *mPointFaceViews[
-                    i * 6 + face
-                ],
-                shadowMap.extent,
-                mPointMatrices[i][face],
-                pushConstants.objectDataAddress
+        GraphicsCommands::SetViewportAndScissor({
+            DIRECTIONAL_SHADOW_MAP_SIZE,
+            DIRECTIONAL_SHADOW_MAP_SIZE
+        });
+
+        for (uint32_t i = 0;
+             i < mDirectionalShadowCount;
+             ++i) {
+            GraphicsCommands::BeginLabel(
+                "Directional shadow " +
+                    std::to_string(i),
+                {0.55f, 0.55f, 0.85f, 1.0f}
             );
+
+            RenderShadowMap(
+                *mDirectionalShadowMaps[i].image.view,
+                mDirectionalShadowMaps[i].extent,
+                mDirectionalMatrices[i],
+                pushConstants.objectDataAddress,
+                drawLabel
+            );
+
+            GraphicsCommands::EndLabel();
         }
 
-        GraphicsCommands::TransitionImage(
-            shadowMap,
+        GraphicsCommands::EndLabel();
+    }
+
+    if (mPointShadowCount > 0) {
+        static constexpr std::array<
+            const char*,
+            6
+        > FACE_NAMES {
+            "+X",
+            "-X",
+            "+Y",
+            "-Y",
+            "+Z",
+            "-Z"
+        };
+
+        GraphicsCommands::BeginLabel(
+            "Point shadows (" +
+                std::to_string(
+                    mPointShadowCount
+                ) +
+                ")",
+            {0.75f, 0.45f, 0.45f, 1.0f}
+        );
+
+        GraphicsCommands::SetViewportAndScissor({
+            POINT_SHADOW_MAP_SIZE,
+            POINT_SHADOW_MAP_SIZE
+        });
+
+        for (uint32_t i = 0;
+             i < mPointShadowCount;
+             ++i) {
+            GraphicsCommands::BeginLabel(
+                "Point shadow " +
+                    std::to_string(i),
+                {0.85f, 0.55f, 0.55f, 1.0f}
+            );
+
+            for (uint32_t face = 0;
+                 face < 6;
+                 ++face) {
+                GraphicsCommands::BeginLabel(
+                    std::string("Face ") +
+                        FACE_NAMES[face],
+                    {0.9f, 0.65f, 0.65f, 1.0f}
+                );
+
+                RenderShadowMap(
+                    *mPointFaceViews[
+                        i * 6 + face
+                    ],
+                    mPointShadowMaps[i].extent,
+                    mPointMatrices[i][face],
+                    pushConstants.objectDataAddress,
+                    drawLabel
+                );
+
+                GraphicsCommands::EndLabel();
+            }
+
+            GraphicsCommands::EndLabel();
+        }
+
+        GraphicsCommands::EndLabel();
+    }
+
+    transitions.clear();
+
+    for (uint32_t i = 0;
+         i < mDirectionalShadowCount;
+         ++i) {
+        transitions.push_back({
+            &mDirectionalShadowMaps[i],
             vk::ImageLayout::eShaderReadOnlyOptimal,
             vk::AccessFlagBits2::eShaderRead,
             vk::PipelineStageFlagBits2::eFragmentShader
-        );
+        });
     }
+
+    for (uint32_t i = 0;
+         i < mPointShadowCount;
+         ++i) {
+        transitions.push_back({
+            &mPointShadowMaps[i],
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::AccessFlagBits2::eShaderRead,
+            vk::PipelineStageFlagBits2::eFragmentShader
+        });
+    }
+
+    GraphicsCommands::TransitionImages(transitions);
 
     GraphicsCommands::EndLabel();
 }
@@ -431,7 +570,8 @@ void ShadowPass::RenderShadowMap(
     vk::ImageView imageView,
     vk::Extent2D extent,
     const glm::mat4& lightViewProjection,
-    vk::DeviceAddress objectDataAddress
+    vk::DeviceAddress objectDataAddress,
+    std::string_view drawLabel
 ) {
     const vk::RenderingAttachmentInfo depthAttachment {
         .imageView = imageView,
@@ -460,10 +600,6 @@ void ShadowPass::RenderShadowMap(
         renderingInfo
     );
 
-    GraphicsCommands::SetViewportAndScissor(
-        extent
-    );
-
     const ShadowPushConstants constants {
         .objectDataAddress =
             objectDataAddress,
@@ -476,12 +612,19 @@ void ShadowPass::RenderShadowMap(
         constants
     );
 
+    GraphicsCommands::BeginLabel(
+        std::string(drawLabel),
+        {0.8f, 0.8f, 0.8f, 1.0f}
+    );
+
     GraphicsCommands::DrawIndexedIndirect(
         mIndirectBuffer.GetHandle(),
         0,
         mObjectCount,
         sizeof(vk::DrawIndexedIndirectCommand)
     );
+
+    GraphicsCommands::EndLabel();
 
     GraphicsCommands::EndRendering();
 }

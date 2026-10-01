@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
 
 using namespace SUN;
 
@@ -143,10 +144,24 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
 
         constexpr uint32_t CULL_GROUP_SIZE = 64;
 
-        GraphicsCommands::Dispatch(
+        const uint32_t cullGroupCount =
             (mDrawCount + CULL_GROUP_SIZE - 1) /
-                CULL_GROUP_SIZE
+            CULL_GROUP_SIZE;
+
+        GraphicsCommands::BeginLabel(
+            "Cull dispatch: " +
+                std::to_string(mDrawCount) +
+                " objects / " +
+                std::to_string(cullGroupCount) +
+                " groups",
+            {0.95F, 0.65F, 0.2F, 1.0F}
         );
+
+        GraphicsCommands::Dispatch(
+            cullGroupCount
+        );
+
+        GraphicsCommands::EndLabel();
 
         GraphicsCommands::BufferBarrier(
             mIndirectBuffer.GetHandle(),
@@ -286,6 +301,13 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
             mAssetManager.GetGeometryBuffer()
         );
 
+        GraphicsCommands::BeginLabel(
+            "GBuffer indirect draw (max " +
+                std::to_string(mDrawCount) +
+                " commands)",
+            {0.62F, 0.88F, 0.4F, 1.0F}
+        );
+
         GraphicsCommands::DrawIndexedIndirectCount(
             mIndirectBuffer.GetHandle(),
             0,
@@ -294,6 +316,8 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
             mDrawCount,
             sizeof(vk::DrawIndexedIndirectCommand)
         );
+
+        GraphicsCommands::EndLabel();
     }
 
     GraphicsCommands::EndRendering();

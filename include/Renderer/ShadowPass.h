@@ -2,6 +2,7 @@
 
 #include <array>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "Graphics/Buffers.h"
@@ -48,7 +49,8 @@ namespace SUN {
             vk::ImageView imageView,
             vk::Extent2D extent,
             const glm::mat4& lightViewProjection,
-            vk::DeviceAddress objectDataAddress
+            vk::DeviceAddress objectDataAddress,
+            std::string_view drawLabel
         );
 
         static glm::mat4 BuildDirectionalMatrix(

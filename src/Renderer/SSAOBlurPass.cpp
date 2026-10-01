@@ -86,7 +86,12 @@ void SSAOBlurPass::Execute(const RenderContext& context) {
     GraphicsCommands::SetDepthWriteEnable(false);
     GraphicsCommands::BindPipeline(mPipeline);
     GraphicsCommands::BindDescriptorSets(mLayout, mDescriptors);
+    GraphicsCommands::BeginLabel(
+        "SSAO blur fullscreen draw",
+        {0.6f, 1.0f, 0.65f, 1.0f}
+    );
     GraphicsCommands::DrawFullScreenTriangle();
+    GraphicsCommands::EndLabel();
     GraphicsCommands::EndRendering();
     GraphicsCommands::TransitionImage(
         mBlurredAOImages[context.frameIndex],
@@ -106,7 +111,10 @@ std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& SSAOBlurPass::GetOutputs() {
     return mBlurredAOImages;
 }
 
-void SSAOBlurPass::CreateImages(vk::Extent2D extent) {
+void SSAOBlurPass::CreateImages(vk::Extent2D) {
+    const vk::Extent2D extent =
+        mSSAOImages[0].extent;
+
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         mBlurredAOImages[i] = ResourceFactory::CreateRenderImage(
             vk::Format::eR8Unorm,
