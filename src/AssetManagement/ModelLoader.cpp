@@ -13,6 +13,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -78,6 +79,15 @@ namespace {
         std::size_t uvCorner = 0;
         std::size_t tangentTriangle = 0;
         std::size_t tangentCorner = 0;
+    };
+
+    struct RigidShapeDiagnostic {
+        std::string name;
+        std::size_t vertexCount = 0;
+        std::size_t indexCount = 0;
+        uint64_t positionTopologyHash = 0;
+        uint64_t shapeHash = 0;
+        std::vector<std::array<uint64_t, 3>> triangleEdges;
     };
 
     struct CachedGeometry {
@@ -539,6 +549,87 @@ namespace {
         }
     }
 
+    constexpr double RIGID_EDGE_QUANTIZATION = 100000.0;
+
+    uint64_t QuantizeEdgeLength(
+        const glm::vec3& a,
+        const glm::vec3& b
+    ) {
+        const double length =
+            static_cast<double>(glm::length(b - a));
+
+        return static_cast<uint64_t>(
+            std::llround(length * RIGID_EDGE_QUANTIZATION)
+        );
+    }
+
+    RigidShapeDiagnostic BuildRigidShapeDiagnostic(
+        std::string name,
+        const std::vector<Vertex>& vertices,
+        const std::vector<uint32_t>& indices,
+        uint64_t positionTopologyHash
+    ) {
+        RigidShapeDiagnostic diagnostic;
+        diagnostic.name = std::move(name);
+        diagnostic.vertexCount = vertices.size();
+        diagnostic.indexCount = indices.size();
+        diagnostic.positionTopologyHash =
+            positionTopologyHash;
+
+        diagnostic.triangleEdges.reserve(
+            indices.size() / 3
+        );
+
+        for (std::size_t i = 0;
+             i + 2 < indices.size();
+             i += 3) {
+            const glm::vec3& p0 =
+                vertices[indices[i]].pos;
+
+            const glm::vec3& p1 =
+                vertices[indices[i + 1]].pos;
+
+            const glm::vec3& p2 =
+                vertices[indices[i + 2]].pos;
+
+            std::array<uint64_t, 3> edges {
+                QuantizeEdgeLength(p0, p1),
+                QuantizeEdgeLength(p1, p2),
+                QuantizeEdgeLength(p2, p0)
+            };
+
+            std::sort(edges.begin(), edges.end());
+            diagnostic.triangleEdges.push_back(edges);
+        }
+
+        std::sort(
+            diagnostic.triangleEdges.begin(),
+            diagnostic.triangleEdges.end()
+        );
+
+        uint64_t hash = FNV_OFFSET_BASIS;
+
+        HashUint64(
+            hash,
+            static_cast<uint64_t>(diagnostic.vertexCount)
+        );
+
+        HashUint64(
+            hash,
+            static_cast<uint64_t>(diagnostic.indexCount)
+        );
+
+        for (const auto& triangle :
+             diagnostic.triangleEdges) {
+            HashUint64(hash, triangle[0]);
+            HashUint64(hash, triangle[1]);
+            HashUint64(hash, triangle[2]);
+        }
+
+        diagnostic.shapeHash = hash;
+        return diagnostic;
+    }
+
     uint64_t HashGeometry(const CanonicalGeometry& geometry) {
         uint64_t hash = FNV_OFFSET_BASIS;
 
@@ -636,11 +727,16 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
     std::unordered_map<uint64_t, std::vector<CachedGeometry>> geometryCache;
     std::unordered_map<uint64_t, std::vector<PrimitiveDiagnostic>>
         attributeDiagnosticCache;
+    std::unordered_map<uint64_t, std::vector<RigidShapeDiagnostic>>
+        rigidShapeDiagnosticCache;
     std::unordered_set<MaterialID> modelMaterialIDs;
     GeometryDedupStats dedupStats;
 
     std::size_t attributeDifferencePairs = 0;
+    std::size_t rigidShapePairs = 0;
+
     constexpr std::size_t MAX_ATTRIBUTE_DIAGNOSTIC_LOGS = 32;
+    constexpr std::size_t MAX_RIGID_SHAPE_DIAGNOSTIC_LOGS = 32;
 
     for (std::size_t meshIndex = 0; meshIndex < asset.meshes.size(); ++meshIndex) {
         const auto& gltfMesh = asset.meshes[meshIndex];
@@ -924,6 +1020,55 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 }
             }
 
+            RigidShapeDiagnostic rigidDiagnostic =
+                BuildRigidShapeDiagnostic(
+                    primitiveName,
+                    vertices,
+                    indices,
+                    diagnostic.positionTopologyHash
+                );
+
+            auto& rigidCandidates =
+                rigidShapeDiagnosticCache[
+                    rigidDiagnostic.shapeHash
+                ];
+
+            for (const RigidShapeDiagnostic& candidate :
+                 rigidCandidates) {
+                if (candidate.triangleEdges !=
+                    rigidDiagnostic.triangleEdges) {
+                    continue;
+                }
+
+                // Same translated position/topology was already handled by
+                // the existing diagnostics/dedup path. A different position
+                // signature with the same edge lengths is the interesting
+                // rotation/reflection case.
+                if (candidate.positionTopologyHash ==
+                    rigidDiagnostic.positionTopologyHash) {
+                    continue;
+                }
+
+                ++rigidShapePairs;
+
+                if (rigidShapePairs <=
+                    MAX_RIGID_SHAPE_DIAGNOSTIC_LOGS) {
+                    Logger::Log(
+                        Logger::LOG,
+                        "Rigid-shape candidate '{}' vs '{}': same quantized "
+                        "triangle edge-length signature but different "
+                        "position/topology; likely baked rotation/reflection "
+                        "(diagnostic only)",
+                        candidate.name,
+                        rigidDiagnostic.name
+                    );
+                }
+            }
+
+            rigidCandidates.push_back(
+                std::move(rigidDiagnostic)
+            );
+
             diagnosticCandidates.push_back(
                 std::move(diagnostic)
             );
@@ -1083,6 +1228,29 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             "Primitive attribute diagnostics '{}': no primitives shared "
             "translated position/topology while differing only in normal/UV/"
             "tangent attributes",
+            normalizedPath.string()
+        );
+    }
+
+    if (rigidShapePairs > 0) {
+        Logger::Log(
+            Logger::LOG,
+            "Rigid-shape diagnostics '{}': found {} pair(s) with matching "
+            "triangle edge-length signatures but different position/topology; "
+            "logged first {}. These are candidates for baked "
+            "rotation/reflection, not automatic deduplication yet.",
+            normalizedPath.string(),
+            rigidShapePairs,
+            std::min(
+                rigidShapePairs,
+                MAX_RIGID_SHAPE_DIAGNOSTIC_LOGS
+            )
+        );
+    } else {
+        Logger::Log(
+            Logger::LOG,
+            "Rigid-shape diagnostics '{}': no rotation/reflection candidates "
+            "found from triangle edge-length signatures",
             normalizedPath.string()
         );
     }
