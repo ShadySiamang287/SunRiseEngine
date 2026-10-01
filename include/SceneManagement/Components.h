@@ -213,6 +213,6 @@ namespace SUN {
         glm::vec3 Colour{1.f};
         float intensity;
         float range = 10.f;
-        bool CastShadows = true;
+        bool CastShadows = false;
     };
 }

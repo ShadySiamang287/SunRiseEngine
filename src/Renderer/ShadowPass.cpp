@@ -5,6 +5,7 @@
 #include "Graphics/ResourceFactory.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace SUN;
 
