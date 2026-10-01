@@ -196,12 +196,16 @@ void SSAOPass::CreateNoiseTexture() {
 }
 
 void SSAOPass::CreateImages(vk::Extent2D sourceExtent) {
+    vk::Extent2D ssaoExtent = {
+        sourceExtent.width / 2,
+        sourceExtent.height / 2
+    };
     // Full resolution matches the LearnOpenGL tutorial. Once it is working,
     // this can be changed to sourceExtent / 2 without changing the algorithm.
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         mAOImages[i] = ResourceFactory::CreateRenderImage(
             vk::Format::eR8Unorm,
-            sourceExtent,
+            ssaoExtent,
             vk::ImageLayout::eUndefined,
             vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
             vk::ImageAspectFlagBits::eColor

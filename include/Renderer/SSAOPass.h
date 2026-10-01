@@ -10,7 +10,7 @@
 #include "Renderer/RenderingStructs.h"
 
 namespace SUN {
-    inline constexpr uint32_t SSAO_KERNEL_SIZE = 64;
+    inline constexpr uint32_t SSAO_KERNEL_SIZE = 32;
 
     // Mirrors the LearnOpenGL samples[64], radius, bias and kernelSize uniforms.
     // Use float4 in the shader for the samples/settings to keep layout simple.
