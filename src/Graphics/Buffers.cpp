@@ -141,35 +141,116 @@ vk::DeviceAddress Buffer::GetDeviceAddress() const {
     return mContextPtr->mDevice.getBufferAddress(info);
 }
 
-// ---------------- VertexBuffer ----------------
+// ---------------- GeometryBuffer ----------------
 
-void GeometryBuffer::Init(const void* vertexData, size_t vertexDataSize, size_t vertexStride,
-                        const void* indexData,  size_t indexDataSize,  vk::IndexType indexType) {
+namespace {
+    vk::DeviceSize AlignUp(vk::DeviceSize value, vk::DeviceSize alignment) {
+        return (value + alignment - 1) / alignment * alignment;
+    }
+}
+
+void GeometryBuffer::Init(
+    vk::DeviceSize vertexCapacity,
+    vk::DeviceSize indexCapacity,
+    vk::DeviceSize vertexStride,
+    vk::IndexType indexType
+) {
+    if (vertexCapacity == 0 || indexCapacity == 0 || vertexStride == 0) {
+        throw std::runtime_error("GeometryBuffer::Init - capacities and stride must be non-zero");
+    }
+
+    mVertexCapacity = vertexCapacity;
+    mIndexCapacity = indexCapacity;
     mStride = vertexStride;
-
     mIndexType = indexType;
-    mIndexCount = static_cast<uint32_t>(
-    indexDataSize / (indexType == vk::IndexType::eUint32 ? sizeof(uint32_t) : sizeof(uint16_t)));
+    mVertexBytesUsed = 0;
+    mIndexBytesUsed = 0;
 
-    // Vertex data goes first, index data second, aligned to the index type's size
-    // (Vulkan requires bindIndexBuffer's offset to be a multiple of the index type size)
-    size_t indexAlignment = (indexType == vk::IndexType::eUint32) ? sizeof(uint32_t) : sizeof(uint16_t);
-    size_t alignedVertexSize = (vertexDataSize + indexAlignment - 1) & ~(indexAlignment - 1);
+    mVertexBuffer.Create(
+        vertexCapacity,
+        vk::BufferUsageFlagBits::eVertexBuffer |
+            vk::BufferUsageFlagBits::eTransferDst |
+            vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        VMA_MEMORY_USAGE_AUTO
+    );
 
-    mVertexOffset = 0;
-    mIndexOffset  = alignedVertexSize;
-    size_t totalSize = alignedVertexSize + indexDataSize;
+    mIndexBuffer.Create(
+        indexCapacity,
+        vk::BufferUsageFlagBits::eIndexBuffer |
+            vk::BufferUsageFlagBits::eTransferDst |
+            vk::BufferUsageFlagBits::eShaderDeviceAddress,
+        VMA_MEMORY_USAGE_AUTO
+    );
+}
 
-    Create(totalSize,
-           vk::BufferUsageFlagBits::eVertexBuffer |
-           vk::BufferUsageFlagBits::eIndexBuffer |
-           vk::BufferUsageFlagBits::eTransferDst |
-           vk::BufferUsageFlagBits::eShaderDeviceAddress,
-           VMA_MEMORY_USAGE_AUTO,
-           0); // device-local, no host mapping -> Upload() takes the staging path
-    
-    Upload(vertexData, vertexDataSize, mVertexOffset);
-    Upload(indexData,  indexDataSize,  mIndexOffset);
+GeometryAllocation GeometryBuffer::UploadGeometry(
+    const void* vertexData,
+    size_t vertexDataSize,
+    const void* indexData,
+    size_t indexDataSize
+) {
+    const vk::DeviceSize indexElementSize =
+        mIndexType == vk::IndexType::eUint16
+            ? sizeof(uint16_t)
+            : sizeof(uint32_t);
+
+    if (vertexDataSize == 0 ||
+        vertexDataSize % mStride != 0 ||
+        indexDataSize == 0 ||
+        indexDataSize % indexElementSize != 0) {
+        throw std::runtime_error("GeometryBuffer::UploadGeometry - invalid geometry size");
+    }
+
+    const vk::DeviceSize vertexByteOffset =
+        AlignUp(mVertexBytesUsed, mStride);
+
+    const vk::DeviceSize indexByteOffset =
+        AlignUp(mIndexBytesUsed, indexElementSize);
+
+    if (vertexByteOffset + vertexDataSize > mVertexCapacity) {
+        throw std::runtime_error("Shared vertex buffer capacity exceeded");
+    }
+
+    if (indexByteOffset + indexDataSize > mIndexCapacity) {
+        throw std::runtime_error("Shared index buffer capacity exceeded");
+    }
+
+    const vk::DeviceSize firstVertex =
+        vertexByteOffset / mStride;
+
+    const vk::DeviceSize firstIndex =
+        indexByteOffset / indexElementSize;
+
+    if (firstVertex > static_cast<vk::DeviceSize>(INT32_MAX) ||
+        firstIndex > static_cast<vk::DeviceSize>(UINT32_MAX)) {
+        throw std::runtime_error("Shared geometry buffer offset exceeds Vulkan draw limits");
+    }
+
+    mVertexBuffer.Upload(
+        vertexData,
+        vertexDataSize,
+        vertexByteOffset
+    );
+
+    mIndexBuffer.Upload(
+        indexData,
+        indexDataSize,
+        indexByteOffset
+    );
+
+    mVertexBytesUsed =
+        vertexByteOffset + vertexDataSize;
+
+    mIndexBytesUsed =
+        indexByteOffset + indexDataSize;
+
+    return {
+        .firstIndex = static_cast<uint32_t>(firstIndex),
+        .indexCount = static_cast<uint32_t>(
+            indexDataSize / indexElementSize
+        ),
+        .vertexOffset = static_cast<int32_t>(firstVertex)
+    };
 }
 
 // ---------------- ShaderBuffer ----------------

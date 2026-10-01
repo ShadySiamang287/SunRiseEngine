@@ -47,6 +47,13 @@ AssetManager::AssetManager() {
     WriteTextureDescriptor(0, mFallbackTexture);
     WriteSamplerDescriptors();
 
+    mGeometryBuffer.Init(
+        GEOMETRY_VERTEX_BUFFER_SIZE,
+        GEOMETRY_INDEX_BUFFER_SIZE,
+        sizeof(Vertex),
+        vk::IndexType::eUint32
+    );
+
     mMaterialBuffer.Init(sizeof(GPUMaterial) * MAX_MATERIALS, true);
     mMaterials.reserve(MAX_MATERIALS);
     mMaterials.push_back(GPUMaterial{});

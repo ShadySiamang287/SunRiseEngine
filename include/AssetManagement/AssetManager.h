@@ -14,6 +14,10 @@
 namespace SUN {
     inline constexpr uint32_t MAX_BINDLESS_TEXTURES = 1024;
     inline constexpr uint32_t MAX_MATERIALS = 4096;
+    inline constexpr std::size_t GEOMETRY_VERTEX_BUFFER_SIZE =
+        256ull * 1024ull * 1024ull;
+    inline constexpr std::size_t GEOMETRY_INDEX_BUFFER_SIZE =
+        128ull * 1024ull * 1024ull;
 
     class AssetManager {
     public:
@@ -31,6 +35,9 @@ namespace SUN {
         MaterialID GetOrCreateMaterial(const MaterialDescription& material);
         vk::DeviceAddress GetMaterialBufferAddress();
         std::size_t GetMaterialCount() const { return mMaterials.size(); }
+
+        GeometryBuffer& GetGeometryBuffer() { return mGeometryBuffer; }
+        const GeometryBuffer& GetGeometryBuffer() const { return mGeometryBuffer; }
 
         DescriptorResources& GetTextureDescriptors() { return mTextureDescriptors; }
         const DescriptorResources& GetTextureDescriptors() const { return mTextureDescriptors; }
@@ -56,6 +63,7 @@ namespace SUN {
         std::unordered_map<std::filesystem::path, AssetID> mTexturePaths;
         std::unordered_map<std::filesystem::path, std::shared_ptr<ModelAsset>> mModels;
 
+        GeometryBuffer mGeometryBuffer;
         ShaderBuffer mMaterialBuffer;
         std::vector<GPUMaterial> mMaterials;
     };

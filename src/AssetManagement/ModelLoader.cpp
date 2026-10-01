@@ -1185,15 +1185,19 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             }
 
             if (!mesh) {
-                mesh = std::make_shared<Mesh>();
-                mesh->buffer.Init(
-                    vertices.data(),
-                    vertices.size() * sizeof(Vertex),
-                    sizeof(Vertex),
-                    indices.data(),
-                    indices.size() * sizeof(uint32_t),
-                    vk::IndexType::eUint32
-                );
+                const GeometryAllocation allocation =
+                    mGeometryBuffer.UploadGeometry(
+                        vertices.data(),
+                        vertices.size() * sizeof(Vertex),
+                        indices.data(),
+                        indices.size() * sizeof(uint32_t)
+                    );
+
+                mesh = std::make_shared<Mesh>(Mesh {
+                    .firstIndex = allocation.firstIndex,
+                    .indexCount = allocation.indexCount,
+                    .vertexOffset = allocation.vertexOffset
+                });
 
                 ++dedupStats.uniqueGeometryCount;
                 dedupStats.uploadedBytes += geometryBytes;

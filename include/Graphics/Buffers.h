@@ -43,25 +43,50 @@ namespace SUN{
         static GraphicsContext* mContextPtr;
 
         friend class ShaderBuffer;
+        friend class GeometryBuffer;
     };
 
-    class GeometryBuffer : public Buffer{
+    struct GeometryAllocation {
+        uint32_t firstIndex = 0;
+        uint32_t indexCount = 0;
+        int32_t vertexOffset = 0;
+    };
+
+    class GeometryBuffer {
     public:
-        void Init(const void* vertexData, size_t vertexDataSize, size_t vertexStride,
-                  const void* indexData,  size_t indexDataSize,  vk::IndexType indexType);
-        
-        vk::DeviceSize GetVertexOffset() const { return mVertexOffset; }
-        vk::DeviceSize GetIndexOffset()  const { return mIndexOffset;  }
-        vk::DeviceSize GetStride()       const { return mStride; }
-        uint32_t       GetIndexCount()   const { return mIndexCount; }
-        vk::IndexType  GetIndexType()    const { return mIndexType; }
+        void Init(
+            vk::DeviceSize vertexCapacity,
+            vk::DeviceSize indexCapacity,
+            vk::DeviceSize vertexStride,
+            vk::IndexType indexType
+        );
+
+        GeometryAllocation UploadGeometry(
+            const void* vertexData,
+            size_t vertexDataSize,
+            const void* indexData,
+            size_t indexDataSize
+        );
+
+        vk::Buffer GetVertexHandle() const { return mVertexBuffer.GetHandle(); }
+        vk::Buffer GetIndexHandle() const { return mIndexBuffer.GetHandle(); }
+        vk::DeviceSize GetVertexCapacity() const { return mVertexCapacity; }
+        vk::DeviceSize GetIndexCapacity() const { return mIndexCapacity; }
+        vk::DeviceSize GetVertexBytesUsed() const { return mVertexBytesUsed; }
+        vk::DeviceSize GetIndexBytesUsed() const { return mIndexBytesUsed; }
+        vk::DeviceSize GetStride() const { return mStride; }
+        vk::IndexType GetIndexType() const { return mIndexType; }
 
     private:
-        vk::DeviceSize mVertexOffset = 0;
-        vk::DeviceSize mIndexOffset  = 0;
-        vk::DeviceSize mStride       = 0;
-        uint32_t       mIndexCount   = 0;
-        vk::IndexType  mIndexType    = vk::IndexType::eUint32;
+        Buffer mVertexBuffer;
+        Buffer mIndexBuffer;
+
+        vk::DeviceSize mVertexCapacity = 0;
+        vk::DeviceSize mIndexCapacity = 0;
+        vk::DeviceSize mVertexBytesUsed = 0;
+        vk::DeviceSize mIndexBytesUsed = 0;
+        vk::DeviceSize mStride = 0;
+        vk::IndexType mIndexType = vk::IndexType::eUint32;
     };
 
     class ShaderBuffer {

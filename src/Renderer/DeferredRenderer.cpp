@@ -165,14 +165,18 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
         pushConstants
     );
 
-    for (const auto& batch : mBatches) {
-        GraphicsCommands::BindGeometryBuffer(batch.mesh->buffer);
+    if (!mBatches.empty()) {
+        GraphicsCommands::BindGeometryBuffer(
+            mAssetManager.GetGeometryBuffer()
+        );
+    }
 
+    for (const auto& batch : mBatches) {
         GraphicsCommands::DrawIndexed(
-            batch.mesh->buffer.GetIndexCount(),
+            batch.mesh->indexCount,
             batch.instanceCount,
-            0,
-            0,
+            batch.mesh->firstIndex,
+            batch.mesh->vertexOffset,
             batch.firstInstance
         );
     }

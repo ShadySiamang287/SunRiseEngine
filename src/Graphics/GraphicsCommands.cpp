@@ -262,9 +262,21 @@ void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
         return;
     }
-    auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
-    cmd.bindVertexBuffers(0, buffer.GetHandle(), buffer.GetVertexOffset());
-    cmd.bindIndexBuffer(buffer.GetHandle(), buffer.GetIndexOffset(), buffer.GetIndexType());
+
+    auto& cmd =
+        mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+
+    cmd.bindVertexBuffers(
+        0,
+        buffer.GetVertexHandle(),
+        vk::DeviceSize{0}
+    );
+
+    cmd.bindIndexBuffer(
+        buffer.GetIndexHandle(),
+        0,
+        buffer.GetIndexType()
+    );
 }
 
 void GraphicsCommands::SetViewportAndScissor(vk::Extent2D extent) {
