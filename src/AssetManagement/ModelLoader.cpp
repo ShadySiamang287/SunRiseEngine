@@ -26,6 +26,7 @@ namespace {
     struct LoadedPrimitive {
         std::shared_ptr<Mesh> mesh;
         MaterialID material = DEFAULT_MATERIAL_ID;
+        glm::mat4 geometryTransform{1.0f};
         std::string name;
     };
 
@@ -49,12 +50,14 @@ namespace {
     struct CachedGeometry {
         std::shared_ptr<Mesh> mesh;
         CanonicalGeometry geometry;
+        glm::vec3 origin{0.0f};
     };
 
     struct GeometryDedupStats {
         std::size_t primitiveCount = 0;
         std::size_t uniqueGeometryCount = 0;
         std::size_t reusedGeometryCount = 0;
+        std::size_t translatedReuseCount = 0;
         std::size_t sourceBytes = 0;
         std::size_t uploadedBytes = 0;
     };
@@ -92,11 +95,39 @@ namespace {
         return std::bit_cast<uint32_t>(value);
     }
 
-    CanonicalVertex MakeCanonicalVertex(const Vertex& vertex) {
+    glm::vec3 FindGeometryOrigin(const std::vector<Vertex>& vertices) {
+        if (vertices.empty()) {
+            return glm::vec3(0.0f);
+        }
+
+        glm::vec3 origin = vertices.front().pos;
+
+        for (const Vertex& vertex : vertices) {
+            const glm::vec3& position = vertex.pos;
+
+            if (position.x < origin.x ||
+                (position.x == origin.x && position.y < origin.y) ||
+                (position.x == origin.x &&
+                 position.y == origin.y &&
+                 position.z < origin.z)) {
+                origin = position;
+            }
+        }
+
+        return origin;
+    }
+
+    CanonicalVertex MakeCanonicalVertex(
+        const Vertex& vertex,
+        const glm::vec3& origin
+    ) {
+        const glm::vec3 relativePosition =
+            vertex.pos - origin;
+
         return {{
-            CanonicalFloatBits(vertex.pos.x),
-            CanonicalFloatBits(vertex.pos.y),
-            CanonicalFloatBits(vertex.pos.z),
+            CanonicalFloatBits(relativePosition.x),
+            CanonicalFloatBits(relativePosition.y),
+            CanonicalFloatBits(relativePosition.z),
             CanonicalFloatBits(vertex.normal.x),
             CanonicalFloatBits(vertex.normal.y),
             CanonicalFloatBits(vertex.normal.z),
@@ -111,9 +142,11 @@ namespace {
 
     CanonicalGeometry BuildCanonicalGeometry(
         const std::vector<Vertex>& vertices,
-        const std::vector<uint32_t>& indices
+        const std::vector<uint32_t>& indices,
+        glm::vec3& origin
     ) {
         CanonicalGeometry canonical;
+        origin = FindGeometryOrigin(vertices);
         canonical.vertices.reserve(vertices.size());
         canonical.triangles.reserve(indices.size() / 3);
 
@@ -121,7 +154,10 @@ namespace {
         sortedVertices.reserve(vertices.size());
 
         for (uint32_t i = 0; i < static_cast<uint32_t>(vertices.size()); ++i) {
-            sortedVertices.emplace_back(MakeCanonicalVertex(vertices[i]), i);
+            sortedVertices.emplace_back(
+                MakeCanonicalVertex(vertices[i], origin),
+                i
+            );
         }
 
         std::sort(
@@ -514,8 +550,14 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             ++dedupStats.primitiveCount;
             dedupStats.sourceBytes += geometryBytes;
 
+            glm::vec3 geometryOrigin{0.0f};
+
             CanonicalGeometry canonicalGeometry =
-                BuildCanonicalGeometry(vertices, indices);
+                BuildCanonicalGeometry(
+                    vertices,
+                    indices,
+                    geometryOrigin
+                );
 
             const uint64_t geometryHash =
                 HashGeometry(canonicalGeometry);
@@ -524,11 +566,26 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 geometryCache[geometryHash];
 
             std::shared_ptr<Mesh> mesh;
+            glm::mat4 geometryTransform{1.0f};
 
             for (const CachedGeometry& candidate : candidates) {
                 if (candidate.geometry == canonicalGeometry) {
                     mesh = candidate.mesh;
                     ++dedupStats.reusedGeometryCount;
+
+                    const glm::vec3 translation =
+                        geometryOrigin - candidate.origin;
+
+                    if (translation != glm::vec3(0.0f)) {
+                        geometryTransform =
+                            glm::translate(
+                                glm::mat4(1.0f),
+                                translation
+                            );
+
+                        ++dedupStats.translatedReuseCount;
+                    }
+
                     break;
                 }
             }
@@ -549,7 +606,8 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
                 candidates.push_back({
                     .mesh = mesh,
-                    .geometry = std::move(canonicalGeometry)
+                    .geometry = std::move(canonicalGeometry),
+                    .origin = geometryOrigin
                 });
             }
 
@@ -562,6 +620,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             outputMesh.push_back({
                 .mesh = std::move(mesh),
                 .material = materialID,
+                .geometryTransform = geometryTransform,
                 .name = std::move(primitiveName)
             });
         }
@@ -613,7 +672,8 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 model->primitives.push_back({
                     .mesh = primitive.mesh,
                     .material = primitive.material,
-                    .transform = nodeTransform,
+                    .transform =
+                        nodeTransform * primitive.geometryTransform,
                     .name = std::move(name)
                 });
             }
@@ -638,12 +698,13 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
     Logger::Log(
         Logger::LOG,
         "Geometry dedup '{}': {} glTF primitives -> {} unique GPU meshes "
-        "({} reused, {:.1f}% reduction), upload data {:.2f} MiB -> {:.2f} MiB "
-        "({:.1f}% reduction)",
+        "({} reused, {} via baked translation, {:.1f}% reduction), "
+        "upload data {:.2f} MiB -> {:.2f} MiB ({:.1f}% reduction)",
         normalizedPath.string(),
         dedupStats.primitiveCount,
         dedupStats.uniqueGeometryCount,
         dedupStats.reusedGeometryCount,
+        dedupStats.translatedReuseCount,
         primitiveReduction,
         static_cast<double>(dedupStats.sourceBytes) / bytesPerMiB,
         static_cast<double>(dedupStats.uploadedBytes) / bytesPerMiB,
