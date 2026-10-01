@@ -1333,7 +1333,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
     Logger::Log(
         Logger::LOG,
-        "Material sharing '{}': {} primitive references -> {} unique materials "
+        "Materials '{}': {} glTF primitives -> {} unique materials "
         "({:.1f}% reuse)",
         normalizedPath.string(),
         dedupStats.primitiveCount,
@@ -1343,7 +1343,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
     Logger::Log(
         Logger::LOG,
-        "Loaded glTF '{}' with {} renderable primitives",
+        "Model loaded '{}': {} renderable primitive instances",
         normalizedPath.string(),
         model->primitives.size()
     );
