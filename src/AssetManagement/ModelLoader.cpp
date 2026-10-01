@@ -74,6 +74,12 @@ namespace {
         std::string name;
     };
 
+    struct PendingGeometryUpload {
+        std::shared_ptr<Mesh> mesh;
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+    };
+
     struct VertexDedupStats {
         std::size_t inputVertices = 0;
         std::size_t outputVertices = 0;
@@ -120,6 +126,26 @@ namespace {
             return 0;
         }
         return std::bit_cast<uint32_t>(value);
+    }
+
+    BoundingBox CalculateBounds(
+        const std::vector<Vertex>& vertices
+    ) {
+        BoundingBox bounds;
+
+        if (vertices.empty()) {
+            return bounds;
+        }
+
+        bounds.min = vertices.front().pos;
+        bounds.max = vertices.front().pos;
+
+        for (const Vertex& vertex : vertices) {
+            bounds.min = glm::min(bounds.min, vertex.pos);
+            bounds.max = glm::max(bounds.max, vertex.pos);
+        }
+
+        return bounds;
     }
 
     glm::vec3 FindGeometryOrigin(const std::vector<Vertex>& vertices) {
@@ -805,6 +831,7 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
     std::unordered_map<uint64_t, std::vector<CachedGeometry>> geometryCache;
     std::unordered_map<uint64_t, std::vector<AffineCachedGeometry>>
         affineGeometryCache;
+    std::vector<PendingGeometryUpload> pendingGeometryUploads;
     std::unordered_set<MaterialID> modelMaterialIDs;
 
     VertexDedupStats vertexDedupStats;
@@ -1185,18 +1212,8 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             }
 
             if (!mesh) {
-                const GeometryAllocation allocation =
-                    mGeometryBuffer.UploadGeometry(
-                        vertices.data(),
-                        vertices.size() * sizeof(Vertex),
-                        indices.data(),
-                        indices.size() * sizeof(uint32_t)
-                    );
-
                 mesh = std::make_shared<Mesh>(Mesh {
-                    .firstIndex = allocation.firstIndex,
-                    .indexCount = allocation.indexCount,
-                    .vertexOffset = allocation.vertexOffset
+                    .bounds = CalculateBounds(vertices)
                 });
 
                 ++dedupStats.uniqueGeometryCount;
@@ -1214,6 +1231,12 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                     .indices = indices,
                     .name = primitiveName
                 });
+
+                pendingGeometryUploads.push_back({
+                    .mesh = mesh,
+                    .vertices = vertices,
+                    .indices = indices
+                });
             }
 
             outputMesh.push_back({
@@ -1224,6 +1247,39 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             });
         }
     }
+
+    if (!pendingGeometryUploads.empty()) {
+        std::vector<GeometryUpload> uploads;
+        uploads.reserve(pendingGeometryUploads.size());
+
+        for (const PendingGeometryUpload& pending :
+             pendingGeometryUploads) {
+            uploads.push_back({
+                .vertexData = pending.vertices.data(),
+                .vertexDataSize =
+                    pending.vertices.size() * sizeof(Vertex),
+                .indexData = pending.indices.data(),
+                .indexDataSize =
+                    pending.indices.size() * sizeof(uint32_t)
+            });
+        }
+
+        const std::vector<GeometryAllocation> allocations =
+            mGeometryBuffer.UploadGeometryBatch(uploads);
+
+        for (std::size_t i = 0;
+             i < pendingGeometryUploads.size();
+             ++i) {
+            Mesh& mesh = *pendingGeometryUploads[i].mesh;
+            const GeometryAllocation& allocation =
+                allocations[i];
+
+            mesh.firstIndex = allocation.firstIndex;
+            mesh.indexCount = allocation.indexCount;
+            mesh.vertexOffset = allocation.vertexOffset;
+        }
+    }
+
     auto model = std::make_shared<ModelAsset>();
 
     if (asset.scenes.empty()) {

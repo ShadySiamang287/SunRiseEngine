@@ -32,10 +32,24 @@ namespace SUN {
         }
     };
 
+    struct BoundingBox {
+        glm::vec3 min{0.0f};
+        glm::vec3 max{0.0f};
+
+        glm::vec3 Center() const {
+            return (min + max) * 0.5f;
+        }
+
+        glm::vec3 Extents() const {
+            return (max - min) * 0.5f;
+        }
+    };
+
     struct Mesh {
         uint32_t firstIndex = 0;
         uint32_t indexCount = 0;
         int32_t vertexOffset = 0;
+        BoundingBox bounds;
     };
 
     struct RenderContext {

@@ -12,6 +12,7 @@ namespace SUN{
     class ShaderCache;
     class GraphicsCommands;
     class Buffer;
+    class GeometryBuffer;
     class ShaderBuffer;
     class Application;
 
@@ -133,6 +134,7 @@ namespace SUN{
         friend ShaderCache;
         friend GraphicsCommands;
         friend Buffer;
+        friend GeometryBuffer;
         friend ShaderBuffer;
         friend Application;
         friend class Texture2D;

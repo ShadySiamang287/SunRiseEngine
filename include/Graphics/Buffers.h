@@ -1,5 +1,7 @@
 #pragma once
 #include <array>
+#include <span>
+#include <vector>
 
 #include "Graphics/GraphicsContext.h"
 
@@ -52,6 +54,13 @@ namespace SUN{
         int32_t vertexOffset = 0;
     };
 
+    struct GeometryUpload {
+        const void* vertexData = nullptr;
+        size_t vertexDataSize = 0;
+        const void* indexData = nullptr;
+        size_t indexDataSize = 0;
+    };
+
     class GeometryBuffer {
     public:
         void Init(
@@ -68,6 +77,10 @@ namespace SUN{
             size_t indexDataSize
         );
 
+        std::vector<GeometryAllocation> UploadGeometryBatch(
+            std::span<const GeometryUpload> uploads
+        );
+
         vk::Buffer GetVertexHandle() const { return mVertexBuffer.GetHandle(); }
         vk::Buffer GetIndexHandle() const { return mIndexBuffer.GetHandle(); }
         vk::DeviceSize GetVertexCapacity() const { return mVertexCapacity; }
@@ -78,6 +91,11 @@ namespace SUN{
         vk::IndexType GetIndexType() const { return mIndexType; }
 
     private:
+        void EnsureCapacity(
+            vk::DeviceSize requiredVertexBytes,
+            vk::DeviceSize requiredIndexBytes
+        );
+
         Buffer mVertexBuffer;
         Buffer mIndexBuffer;
 

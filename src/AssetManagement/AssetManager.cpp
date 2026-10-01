@@ -48,8 +48,8 @@ AssetManager::AssetManager() {
     WriteSamplerDescriptors();
 
     mGeometryBuffer.Init(
-        GEOMETRY_VERTEX_BUFFER_SIZE,
-        GEOMETRY_INDEX_BUFFER_SIZE,
+        INITIAL_GEOMETRY_VERTEX_BUFFER_SIZE,
+        INITIAL_GEOMETRY_INDEX_BUFFER_SIZE,
         sizeof(Vertex),
         vk::IndexType::eUint32
     );

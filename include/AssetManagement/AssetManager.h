@@ -14,10 +14,10 @@
 namespace SUN {
     inline constexpr uint32_t MAX_BINDLESS_TEXTURES = 1024;
     inline constexpr uint32_t MAX_MATERIALS = 4096;
-    inline constexpr std::size_t GEOMETRY_VERTEX_BUFFER_SIZE =
-        256ull * 1024ull * 1024ull;
-    inline constexpr std::size_t GEOMETRY_INDEX_BUFFER_SIZE =
-        128ull * 1024ull * 1024ull;
+    inline constexpr std::size_t INITIAL_GEOMETRY_VERTEX_BUFFER_SIZE =
+        64ull * 1024ull * 1024ull;
+    inline constexpr std::size_t INITIAL_GEOMETRY_INDEX_BUFFER_SIZE =
+        32ull * 1024ull * 1024ull;
 
     class AssetManager {
     public:
