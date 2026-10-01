@@ -9,8 +9,11 @@
 
 #include <glm/glm.hpp>
 
+#include <bit>
+#include <cstdint>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace SUN;
@@ -25,6 +28,128 @@ namespace {
         float roughnessFactor = 1.f;
         std::string name;
     };
+
+    struct CachedGeometry {
+        std::shared_ptr<Mesh> mesh;
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+    };
+
+    struct GeometryDedupStats {
+        std::size_t primitiveCount = 0;
+        std::size_t uniqueGeometryCount = 0;
+        std::size_t reusedGeometryCount = 0;
+        std::size_t sourceBytes = 0;
+        std::size_t uploadedBytes = 0;
+    };
+
+    constexpr uint64_t FNV_OFFSET_BASIS = 14695981039346656037ull;
+    constexpr uint64_t FNV_PRIME = 1099511628211ull;
+
+    void HashByte(uint64_t& hash, uint8_t value) {
+        hash ^= value;
+        hash *= FNV_PRIME;
+    }
+
+    void HashUint32(uint64_t& hash, uint32_t value) {
+        for (uint32_t byte = 0; byte < sizeof(value); ++byte) {
+            HashByte(hash, static_cast<uint8_t>((value >> (byte * 8u)) & 0xffu));
+        }
+    }
+
+    void HashUint64(uint64_t& hash, uint64_t value) {
+        for (uint32_t byte = 0; byte < sizeof(value); ++byte) {
+            HashByte(hash, static_cast<uint8_t>((value >> (byte * 8u)) & 0xffu));
+        }
+    }
+
+    void HashFloat(uint64_t& hash, float value) {
+        HashUint32(hash, std::bit_cast<uint32_t>(value));
+    }
+
+    void HashVertex(uint64_t& hash, const Vertex& vertex) {
+        HashFloat(hash, vertex.pos.x);
+        HashFloat(hash, vertex.pos.y);
+        HashFloat(hash, vertex.pos.z);
+
+        HashFloat(hash, vertex.normal.x);
+        HashFloat(hash, vertex.normal.y);
+        HashFloat(hash, vertex.normal.z);
+
+        HashFloat(hash, vertex.colour.x);
+        HashFloat(hash, vertex.colour.y);
+        HashFloat(hash, vertex.colour.z);
+
+        HashFloat(hash, vertex.uv.x);
+        HashFloat(hash, vertex.uv.y);
+
+        HashFloat(hash, vertex.tangent.x);
+        HashFloat(hash, vertex.tangent.y);
+        HashFloat(hash, vertex.tangent.z);
+        HashFloat(hash, vertex.tangent.w);
+    }
+
+    uint64_t HashGeometry(
+        const std::vector<Vertex>& vertices,
+        const std::vector<uint32_t>& indices
+    ) {
+        uint64_t hash = FNV_OFFSET_BASIS;
+
+        HashUint64(hash, static_cast<uint64_t>(vertices.size()));
+        HashUint64(hash, static_cast<uint64_t>(indices.size()));
+
+        for (const Vertex& vertex : vertices) {
+            HashVertex(hash, vertex);
+        }
+
+        for (uint32_t index : indices) {
+            HashUint32(hash, index);
+        }
+
+        return hash;
+    }
+
+    bool FloatBitsEqual(float lhs, float rhs) {
+        return std::bit_cast<uint32_t>(lhs) == std::bit_cast<uint32_t>(rhs);
+    }
+
+    bool VerticesEqual(const Vertex& lhs, const Vertex& rhs) {
+        return
+            FloatBitsEqual(lhs.pos.x, rhs.pos.x) &&
+            FloatBitsEqual(lhs.pos.y, rhs.pos.y) &&
+            FloatBitsEqual(lhs.pos.z, rhs.pos.z) &&
+            FloatBitsEqual(lhs.normal.x, rhs.normal.x) &&
+            FloatBitsEqual(lhs.normal.y, rhs.normal.y) &&
+            FloatBitsEqual(lhs.normal.z, rhs.normal.z) &&
+            FloatBitsEqual(lhs.colour.x, rhs.colour.x) &&
+            FloatBitsEqual(lhs.colour.y, rhs.colour.y) &&
+            FloatBitsEqual(lhs.colour.z, rhs.colour.z) &&
+            FloatBitsEqual(lhs.uv.x, rhs.uv.x) &&
+            FloatBitsEqual(lhs.uv.y, rhs.uv.y) &&
+            FloatBitsEqual(lhs.tangent.x, rhs.tangent.x) &&
+            FloatBitsEqual(lhs.tangent.y, rhs.tangent.y) &&
+            FloatBitsEqual(lhs.tangent.z, rhs.tangent.z) &&
+            FloatBitsEqual(lhs.tangent.w, rhs.tangent.w);
+    }
+
+    bool GeometryMatches(
+        const CachedGeometry& cached,
+        const std::vector<Vertex>& vertices,
+        const std::vector<uint32_t>& indices
+    ) {
+        if (cached.vertices.size() != vertices.size() ||
+            cached.indices.size() != indices.size()) {
+            return false;
+        }
+
+        for (std::size_t i = 0; i < vertices.size(); ++i) {
+            if (!VerticesEqual(cached.vertices[i], vertices[i])) {
+                return false;
+            }
+        }
+
+        return cached.indices == indices;
+    }
 
     glm::mat4 ToGlm(const fastgltf::math::fmat4x4& matrix) {
         glm::mat4 result{1.0f};
@@ -99,6 +224,8 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
     fastgltf::Asset asset = std::move(parsed.get());
 
     std::vector<std::vector<LoadedPrimitive>> loadedMeshes(asset.meshes.size());
+    std::unordered_map<uint64_t, std::vector<CachedGeometry>> geometryCache;
+    GeometryDedupStats dedupStats;
 
     for (std::size_t meshIndex = 0; meshIndex < asset.meshes.size(); ++meshIndex) {
         const auto& gltfMesh = asset.meshes[meshIndex];
@@ -339,15 +466,45 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 }
             );
 
-            auto mesh = std::make_shared<Mesh>();
-            mesh->buffer.Init(
-                vertices.data(),
-                vertices.size() * sizeof(Vertex),
-                sizeof(Vertex),
-                indices.data(),
-                indices.size() * sizeof(uint32_t),
-                vk::IndexType::eUint32
-            );
+            const std::size_t geometryBytes =
+                vertices.size() * sizeof(Vertex) +
+                indices.size() * sizeof(uint32_t);
+
+            ++dedupStats.primitiveCount;
+            dedupStats.sourceBytes += geometryBytes;
+
+            const uint64_t geometryHash = HashGeometry(vertices, indices);
+            auto& candidates = geometryCache[geometryHash];
+
+            std::shared_ptr<Mesh> mesh;
+            for (const CachedGeometry& candidate : candidates) {
+                if (GeometryMatches(candidate, vertices, indices)) {
+                    mesh = candidate.mesh;
+                    ++dedupStats.reusedGeometryCount;
+                    break;
+                }
+            }
+
+            if (!mesh) {
+                mesh = std::make_shared<Mesh>();
+                mesh->buffer.Init(
+                    vertices.data(),
+                    vertices.size() * sizeof(Vertex),
+                    sizeof(Vertex),
+                    indices.data(),
+                    indices.size() * sizeof(uint32_t),
+                    vk::IndexType::eUint32
+                );
+
+                ++dedupStats.uniqueGeometryCount;
+                dedupStats.uploadedBytes += geometryBytes;
+
+                candidates.push_back({
+                    .mesh = mesh,
+                    .vertices = std::move(vertices),
+                    .indices = std::move(indices)
+                });
+            }
 
             std::string primitiveName(gltfMesh.name.data(), gltfMesh.name.size());
             if (primitiveName.empty()) {
@@ -422,6 +579,36 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 });
             }
         }
+    );
+
+    const double primitiveReduction =
+        dedupStats.primitiveCount == 0
+            ? 0.0
+            : (static_cast<double>(dedupStats.reusedGeometryCount) /
+               static_cast<double>(dedupStats.primitiveCount)) * 100.0;
+
+    const double uploadReduction =
+        dedupStats.sourceBytes == 0
+            ? 0.0
+            : (1.0 -
+               static_cast<double>(dedupStats.uploadedBytes) /
+               static_cast<double>(dedupStats.sourceBytes)) * 100.0;
+
+    constexpr double bytesPerMiB = 1024.0 * 1024.0;
+
+    Logger::Log(
+        Logger::LOG,
+        "Geometry dedup '{}': {} glTF primitives -> {} unique GPU meshes "
+        "({} reused, {:.1f}% reduction), upload data {:.2f} MiB -> {:.2f} MiB "
+        "({:.1f}% reduction)",
+        normalizedPath.string(),
+        dedupStats.primitiveCount,
+        dedupStats.uniqueGeometryCount,
+        dedupStats.reusedGeometryCount,
+        primitiveReduction,
+        static_cast<double>(dedupStats.sourceBytes) / bytesPerMiB,
+        static_cast<double>(dedupStats.uploadedBytes) / bytesPerMiB,
+        uploadReduction
     );
 
     Logger::Log(
