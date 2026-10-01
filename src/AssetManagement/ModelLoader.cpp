@@ -1343,9 +1343,12 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
 
     Logger::Log(
         Logger::LOG,
-        "Model loaded '{}': {} renderable primitive instances",
+        "Model loaded '{}': {} renderable instances, {} unique GPU meshes, "
+        "{} unique materials",
         normalizedPath.string(),
-        model->primitives.size()
+        model->primitives.size(),
+        dedupStats.uniqueGeometryCount,
+        modelMaterialIDs.size()
     );
 
     mModels.emplace(normalizedPath, model);
