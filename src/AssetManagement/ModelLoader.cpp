@@ -145,6 +145,8 @@ namespace {
             bounds.max = glm::max(bounds.max, vertex.pos);
         }
 
+        bounds.UpdateDerivedValues();
+
         return bounds;
     }
 

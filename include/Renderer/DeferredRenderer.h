@@ -25,7 +25,6 @@ namespace SUN {
 
     private:
         void CreateGBuffers(vk::Extent2D extent);
-        void BuildObjects(const RenderQueue& renderQueue);
 
         vk::raii::Pipeline mPipeline = nullptr;
         vk::raii::PipelineLayout mPipelineLayout = nullptr;
@@ -37,7 +36,7 @@ namespace SUN {
 
         AssetManager& mAssetManager;
 
-        std::vector<ObjectData> mObjects;
+        std::span<const ObjectData> mObjects;
         ShaderBuffer mIndirectBuffer;
         ShaderBuffer mVisibleDrawCountBuffer;
         uint32_t mDrawCount = 0;

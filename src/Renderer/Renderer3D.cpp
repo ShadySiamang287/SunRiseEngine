@@ -65,10 +65,38 @@ void Renderer3D::SubmitMesh(
     const glm::mat4& Transform,
     MaterialID material) {
 
-    mRenderQueue.Submit({
-        &Mesh,
+    const glm::mat4 normalMatrix =
+        glm::mat4(
+            glm::transpose(
+                glm::inverse(
+                    glm::mat3(Transform)
+                )
+            )
+        );
+
+    SubmitMesh(
+        Mesh,
         Transform,
+        normalMatrix,
         material
+    );
+}
+
+void Renderer3D::SubmitMesh(
+    const Mesh& Mesh,
+    const glm::mat4& Transform,
+    const glm::mat4& NormalMatrix,
+    MaterialID material) {
+
+    mRenderQueue.Submit({
+        .model = Transform,
+        .normal = NormalMatrix,
+        .boundsCenter = Mesh.bounds.center,
+        .boundsExtents = Mesh.bounds.extents,
+        .materialIndex = material,
+        .firstIndex = Mesh.firstIndex,
+        .indexCount = Mesh.indexCount,
+        .vertexOffset = Mesh.vertexOffset
     });
 }
 

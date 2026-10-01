@@ -29,6 +29,13 @@ namespace SUN {
             MaterialID material = DEFAULT_MATERIAL_ID
         );
 
+        void SubmitMesh(
+            const Mesh& Mesh,
+            const glm::mat4& Transform,
+            const glm::mat4& NormalMatrix,
+            MaterialID material = DEFAULT_MATERIAL_ID
+        );
+
         void SubmitDirectionalLight(const GPUDirectionalLight& light);
         void SubmitPointLight(const GPUPointLight& light);
 

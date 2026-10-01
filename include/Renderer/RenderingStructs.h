@@ -36,12 +36,19 @@ namespace SUN {
         glm::vec3 min{0.0f};
         glm::vec3 max{0.0f};
 
-        glm::vec3 Center() const {
-            return (min + max) * 0.5f;
-        }
+        glm::vec4 center{0.0f, 0.0f, 0.0f, 1.0f};
+        glm::vec4 extents{0.0f};
 
-        glm::vec3 Extents() const {
-            return (max - min) * 0.5f;
+        void UpdateDerivedValues() {
+            center = glm::vec4(
+                (min + max) * 0.5f,
+                1.0f
+            );
+
+            extents = glm::vec4(
+                (max - min) * 0.5f,
+                0.0f
+            );
         }
     };
 

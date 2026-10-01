@@ -2,31 +2,28 @@
 
 #include <vector>
 
-#include "AssetManagement/Material.h"
 #include "Renderer/RenderingStructs.h"
 
 namespace SUN {
-    struct RenderCommand {
-        const Mesh* mesh;
-        glm::mat4 Transform;
-        MaterialID materialIndex = DEFAULT_MATERIAL_ID;
-    };
-
     class RenderQueue {
     public:
-        void Submit(const RenderCommand& command) {
-            mCommands.push_back(command);
+        RenderQueue() {
+            mObjects.reserve(MAX_OBJECTS);
+        }
+
+        void Submit(const ObjectData& object) {
+            mObjects.push_back(object);
         }
 
         void Clear() {
-            mCommands.clear();
+            mObjects.clear();
         }
 
-        const std::vector<RenderCommand>& GetCommands() const {
-            return mCommands;
+        const std::vector<ObjectData>& GetObjects() const {
+            return mObjects;
         }
 
     private:
-        std::vector<RenderCommand> mCommands;
+        std::vector<ObjectData> mObjects;
     };
 }

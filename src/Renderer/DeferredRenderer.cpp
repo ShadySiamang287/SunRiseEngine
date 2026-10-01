@@ -71,15 +71,39 @@ DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
         vk::BufferUsageFlagBits::eIndirectBuffer
     );
 
-    mObjects.reserve(MAX_OBJECTS);
-
     CreateGBuffers(GraphicsCommands::GetSwapchainExtent());
 }
 
 void DeferredRenderer::Prepare(
     const RenderQueue& renderQueue
 ) {
-    BuildObjects(renderQueue);
+    const auto& objects =
+        renderQueue.GetObjects();
+
+    const std::size_t objectCount =
+        std::min(
+            objects.size(),
+            static_cast<std::size_t>(MAX_OBJECTS)
+        );
+
+    if (objects.size() > MAX_OBJECTS) {
+        Logger::Log(
+            Logger::WARNING,
+            "Render queue has {} objects, only the first {} "
+            "will be considered for GPU culling",
+            objects.size(),
+            MAX_OBJECTS
+        );
+    }
+
+    mObjects =
+        std::span<const ObjectData>(
+            objects.data(),
+            objectCount
+        );
+
+    mDrawCount =
+        static_cast<uint32_t>(objectCount);
 
     const uint32_t zero = 0;
     mVisibleDrawCountBuffer.Upload(
@@ -349,61 +373,3 @@ void DeferredRenderer::CreateGBuffers(vk::Extent2D extent) {
     }
 }
 
-void DeferredRenderer::BuildObjects(
-    const RenderQueue& renderQueue
-) {
-    const auto& commands =
-        renderQueue.GetCommands();
-
-    if (commands.size() > MAX_OBJECTS) {
-        Logger::Log(
-            Logger::WARNING,
-            "Render queue has {} objects, only the first {} "
-            "will be considered for GPU culling",
-            commands.size(),
-            MAX_OBJECTS
-        );
-    }
-
-    mObjects.clear();
-
-    const std::size_t count =
-        std::min(
-            commands.size(),
-            static_cast<std::size_t>(MAX_OBJECTS)
-        );
-
-    for (std::size_t i = 0; i < count; ++i) {
-        const RenderCommand& command =
-            commands[i];
-
-        if (!command.mesh) {
-            continue;
-        }
-
-        const BoundingBox& bounds =
-            command.mesh->bounds;
-
-        mObjects.push_back({
-            .model = command.Transform,
-            .normal = glm::mat4(
-                glm::transpose(
-                    glm::inverse(
-                        glm::mat3(command.Transform)
-                    )
-                )
-            ),
-            .boundsCenter =
-                glm::vec4(bounds.Center(), 1.0f),
-            .boundsExtents =
-                glm::vec4(bounds.Extents(), 0.0f),
-            .materialIndex = command.materialIndex,
-            .firstIndex = command.mesh->firstIndex,
-            .indexCount = command.mesh->indexCount,
-            .vertexOffset = command.mesh->vertexOffset
-        });
-    }
-
-    mDrawCount =
-        static_cast<uint32_t>(mObjects.size());
-}

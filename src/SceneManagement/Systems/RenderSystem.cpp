@@ -18,7 +18,8 @@ void RenderSystem::Render(BaseScene& scene, Renderer3D* renderer) {
 
         renderer->SubmitMesh(
             *mesh.mesh,
-            transform.GetTransform() * mesh.LocalTransform,
+            mesh.GetWorldTransform(transform),
+            mesh.GetWorldNormalMatrix(transform),
             material ? material->material : DEFAULT_MATERIAL_ID
         );
     }
