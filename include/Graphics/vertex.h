@@ -47,6 +47,14 @@ namespace SUN {
 
     static_assert(sizeof(CullPushConstants) == 40);
 
+    struct ShadowPushConstants {
+        vk::DeviceAddress objectDataAddress;
+        uint64_t padding = 0;
+        glm::mat4 lightViewProjection{1.0f};
+    };
+
+    static_assert(sizeof(ShadowPushConstants) == 80);
+
     struct AllocatedImage {
         vk::Image image{nullptr};
         vk::raii::ImageView view{nullptr};

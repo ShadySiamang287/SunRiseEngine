@@ -32,8 +32,16 @@ void RenderSystem::Render(BaseScene& scene, Renderer3D* renderer) {
         glm::vec3 direction = transform.Rotation * glm::vec3(0.0f, 0.0f, -1.0f);
 
         renderer->SubmitDirectionalLight({
-            {direction, light.intensity},
-            {light.Colour, 1.f}
+            .directionIntensity = {
+                direction,
+                light.intensity
+            },
+            .color = {
+                light.Colour,
+                1.f
+            },
+            .castsShadows =
+                light.CastShadows ? 1u : 0u
         });
     }
 
@@ -43,8 +51,16 @@ void RenderSystem::Render(BaseScene& scene, Renderer3D* renderer) {
         auto& light = pointLightView.get<PointLightComponent>(entity);
 
         renderer->SubmitPointLight({
-            {transform.Position, light.range},
-            {light.Colour, light.intensity}
+            .positionRange = {
+                transform.Position,
+                light.range
+            },
+            .colorIntensity = {
+                light.Colour,
+                light.intensity
+            },
+            .castsShadows =
+                light.CastShadows ? 1u : 0u
         });
     }
 

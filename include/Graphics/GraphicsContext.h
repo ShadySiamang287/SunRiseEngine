@@ -88,7 +88,8 @@ namespace SUN{
             vk::AccessFlags2 dst_access_mask,
             vk::PipelineStageFlags2 src_stage_mask,
             vk::PipelineStageFlags2 dst_stage_mask,
-            vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor
+            vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor,
+            uint32_t layerCount = 1
         );
 
         void ImmediateSubmit(const std::function<void(vk::raii::CommandBuffer&)>& function);

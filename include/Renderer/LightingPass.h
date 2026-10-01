@@ -3,6 +3,7 @@
 #include "Graphics/GraphicsConfig.h"
 #include "Renderer/GBuffer.h"
 #include "Renderer/RenderingStructs.h"
+#include "Renderer/ShadowPass.h"
 
 namespace SUN {
     class LightingPass {
@@ -10,7 +11,8 @@ namespace SUN {
         LightingPass(
             std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers,
             std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& aoImages,
-            vk::raii::Sampler& sampler
+            vk::raii::Sampler& sampler,
+            ShadowPass& shadowPass
         );
 
         void Execute(const RenderContext& context, const PushConstants& pushConstants);
@@ -35,5 +37,6 @@ namespace SUN {
         std::array<RenderImage, MAX_FRAMES_IN_FLIGHT> mBrightnessImages;
 
         vk::raii::Sampler& mSampler;
+        ShadowPass& mShadowPass;
     };
 }

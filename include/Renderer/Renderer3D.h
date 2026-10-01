@@ -8,6 +8,7 @@
 #include "Renderer/RenderQueue.h"
 #include "Renderer/RenderingStructs.h"
 #include "Renderer/SSAOPass.h"
+#include "Renderer/ShadowPass.h"
 #include "Renderer/SSAOBlurPass.h"
 
 #include "Renderer/PostProcessor/BloomPass.h"
@@ -47,6 +48,7 @@ namespace SUN {
         vk::raii::Sampler mSampler = nullptr;
         RenderFrameData mFrameData;
         std::unique_ptr<DeferredRenderer> mDeferredRenderer;
+        std::unique_ptr<ShadowPass> mShadowPass;
         std::unique_ptr<SSAOPass> mSSAOPass;
         std::unique_ptr<SSAOBlurPass> mSSAOBlurPass;
         std::unique_ptr<LightingPass> mLightingPass;

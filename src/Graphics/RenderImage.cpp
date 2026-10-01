@@ -18,6 +18,7 @@ RenderImage::RenderImage(RenderImage&& other) noexcept {
     access = other.access;
     stage = other.stage;
     aspect = other.aspect;
+    layerCount = other.layerCount;
 
     mAllocator = other.mAllocator;
 
@@ -30,6 +31,7 @@ RenderImage::RenderImage(RenderImage&& other) noexcept {
     other.access = {};
     other.stage = vk::PipelineStageFlagBits2::eNone;
     other.aspect = vk::ImageAspectFlagBits::eColor;
+    other.layerCount = 1;
     other.mAllocator = nullptr;
 }
 
@@ -50,6 +52,7 @@ RenderImage& RenderImage::operator=(RenderImage&& other) noexcept {
     access = other.access;
     stage = other.stage;
     aspect = other.aspect;
+    layerCount = other.layerCount;
 
     mAllocator = other.mAllocator;
 
@@ -62,6 +65,7 @@ RenderImage& RenderImage::operator=(RenderImage&& other) noexcept {
     other.access = {};
     other.stage = vk::PipelineStageFlagBits2::eNone;
     other.aspect = vk::ImageAspectFlagBits::eColor;
+    other.layerCount = 1;
     other.mAllocator = nullptr;
 
     return *this;
@@ -88,5 +92,6 @@ void RenderImage::Destroy() {
     access = {};
     stage = vk::PipelineStageFlagBits2::eNone;
     aspect = vk::ImageAspectFlagBits::eColor;
+    layerCount = 1;
     mAllocator = nullptr;
 }

@@ -98,17 +98,31 @@ namespace SUN {
     };
 
     constexpr uint32_t MAX_DIRECTIONAL_LIGHTS = 32;
+    constexpr uint32_t MAX_SHADOW_DIRECTIONAL_LIGHTS = 16;
 
     struct GPUDirectionalLight {
         glm::vec4 directionIntensity;
         glm::vec4 color;
+
+        glm::mat4 lightViewProjection{1.0f};
+
+        uint32_t shadowIndex = 0;
+        uint32_t castsShadows = 0;
+        uint32_t padding0 = 0;
+        uint32_t padding1 = 0;
     };
 
     constexpr uint32_t MAX_POINT_LIGHTS = 32;
+    constexpr uint32_t MAX_SHADOW_POINT_LIGHTS = 16;
 
     struct GPUPointLight {
         glm::vec4 positionRange;
         glm::vec4 colorIntensity;
+
+        uint32_t shadowIndex = 0;
+        uint32_t castsShadows = 0;
+        uint32_t padding0 = 0;
+        uint32_t padding1 = 0;
     };
 
     struct BloomPushConstants {

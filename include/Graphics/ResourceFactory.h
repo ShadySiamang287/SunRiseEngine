@@ -30,6 +30,7 @@ namespace SUN {
         vk::Format stencilAttachmentFormat = vk::Format::eUndefined;
 
         bool useVertexInput = true;
+        bool depthBiasEnable = false;
     };
 
     struct SamplerConfig {
@@ -85,7 +86,23 @@ namespace SUN {
 
         static vk::raii::Sampler CreateSampler(const SamplerConfig& config);
 
-        static RenderImage CreateRenderImage(vk::Format format, vk::Extent2D extent, vk::ImageLayout layout, vk::ImageUsageFlags usageFlags, vk::ImageAspectFlags aspectFlags);
+        static RenderImage CreateRenderImage(
+            vk::Format format,
+            vk::Extent2D extent,
+            vk::ImageLayout layout,
+            vk::ImageUsageFlags usageFlags,
+            vk::ImageAspectFlags aspectFlags,
+            uint32_t arrayLayers = 1,
+            vk::ImageViewType viewType = vk::ImageViewType::e2D,
+            vk::ImageCreateFlags flags = {}
+        );
+
+        static vk::raii::ImageView CreateImageView(
+            const RenderImage& image,
+            vk::ImageViewType viewType,
+            uint32_t baseArrayLayer,
+            uint32_t layerCount
+        );
 
     private:
         GraphicsContext* mGraphicsContextPtr;

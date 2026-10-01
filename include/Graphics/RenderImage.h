@@ -29,6 +29,7 @@ namespace SUN {
         vk::AccessFlags2 access{};
         vk::PipelineStageFlags2 stage = vk::PipelineStageFlagBits2::eNone;
         vk::ImageAspectFlags aspect = vk::ImageAspectFlagBits::eColor;
+        uint32_t layerCount = 1;
 
     private:
         void Destroy();

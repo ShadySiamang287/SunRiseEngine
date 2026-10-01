@@ -68,9 +68,19 @@ namespace SUN {
             const CullPushConstants& constants
         );
 
+        static void PushShadowConstants(
+            vk::raii::PipelineLayout& layout,
+            const ShadowPushConstants& constants
+        );
+
         static void SetViewportAndScissor(vk::Extent2D extent);
         static void SetDepthTestEnable(bool state);
         static void SetDepthWriteEnable(bool state);
+        static void SetDepthBias(
+            float constantFactor,
+            float clamp,
+            float slopeFactor
+        );
 
         static void WriteDescriptors(std::span<const vk::WriteDescriptorSet> writes);
 
@@ -111,7 +121,8 @@ namespace SUN {
             vk::PipelineStageFlags2 srcStage,
             vk::PipelineStageFlags2 dstStage,
             vk::ImageAspectFlags aspect =
-                vk::ImageAspectFlagBits::eColor
+                vk::ImageAspectFlagBits::eColor,
+            uint32_t layerCount = 1
         );
 
         static void ImageBarriers(std::span<const vk::ImageMemoryBarrier2> barriers);

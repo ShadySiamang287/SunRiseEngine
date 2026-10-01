@@ -28,11 +28,19 @@ Renderer3D::Renderer3D(AssetManager& assetManager)
     mDeferredRenderer =
         std::make_unique<DeferredRenderer>(mAssetManager);
 
+    mShadowPass =
+        std::make_unique<ShadowPass>(mAssetManager);
+
     mSSAOPass = std::make_unique<SSAOPass>(mDeferredRenderer->GetGBuffers(), mSampler);
     mSSAOBlurPass = std::make_unique<SSAOBlurPass>(mSSAOPass->GetOutputs(), mSampler);
 
     mLightingPass =
-        std::make_unique<LightingPass>(mDeferredRenderer->GetGBuffers(), mSSAOBlurPass->GetOutputs(), mSampler);
+        std::make_unique<LightingPass>(
+            mDeferredRenderer->GetGBuffers(),
+            mSSAOBlurPass->GetOutputs(),
+            mSampler,
+            *mShadowPass
+        );
 
     mBloomPass =
         std::make_unique<BloomPass>(mLightingPass->GetBrightnessImages(), mSampler);
@@ -108,6 +116,13 @@ void Renderer3D::EndScene(RenderContext& context) {
 
     mDeferredRenderer->Prepare(mRenderQueue);
 
+    mShadowPass->Prepare(
+        mRenderQueue.GetObjects(),
+        *mCamera,
+        mDirectionalLights,
+        mPointLights
+    );
+
     const PushConstants pushConstants =
         mFrameData.Prepare(
             *mCamera,
@@ -118,6 +133,8 @@ void Renderer3D::EndScene(RenderContext& context) {
         );
 
     GraphicsCommands::BeginDraw();
+
+    mShadowPass->Execute(pushConstants);
 
     mDeferredRenderer->Execute(context, pushConstants);
 

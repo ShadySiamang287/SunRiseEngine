@@ -101,6 +101,7 @@ target_sources(SunriseEngine
     src/Renderer/Renderer3D.cpp
     src/Renderer/RenderFrameData.cpp
     src/Renderer/DeferredRenderer.cpp
+    src/Renderer/ShadowPass.cpp
     src/Renderer/LightingPass.cpp
     src/Renderer/SSAOPass.cpp
     src/Renderer/SSAOBlurPass.cpp

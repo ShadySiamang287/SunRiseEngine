@@ -8,12 +8,14 @@ using namespace SUN;
 LightingPass::LightingPass(
     std::array<GBuffer, MAX_FRAMES_IN_FLIGHT>& gBuffers,
     std::array<RenderImage, MAX_FRAMES_IN_FLIGHT>& aoImages,
-    vk::raii::Sampler& sampler)
+    vk::raii::Sampler& sampler,
+    ShadowPass& shadowPass)
     : mGBuffers(gBuffers),
       mAOImages(aoImages),
-      mSampler(sampler) {
+      mSampler(sampler),
+      mShadowPass(shadowPass) {
 
-    std::array<vk::DescriptorSetLayoutBinding, 5> bindings;
+    std::array<vk::DescriptorSetLayoutBinding, 8> bindings;
 
     bindings[0] = {
         .binding = 0,
@@ -45,6 +47,27 @@ LightingPass::LightingPass(
 
     bindings[4] = {
         .binding = 4,
+        .descriptorType = vk::DescriptorType::eSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+
+    bindings[5] = {
+        .binding = 5,
+        .descriptorType = vk::DescriptorType::eSampledImage,
+        .descriptorCount = MAX_SHADOW_DIRECTIONAL_LIGHTS,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+
+    bindings[6] = {
+        .binding = 6,
+        .descriptorType = vk::DescriptorType::eSampledImage,
+        .descriptorCount = MAX_SHADOW_POINT_LIGHTS,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment
+    };
+
+    bindings[7] = {
+        .binding = 7,
         .descriptorType = vk::DescriptorType::eSampler,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment
@@ -228,74 +251,164 @@ void LightingPass::UpdateDescriptors() {
         .sampler = *mSampler
     };
 
-    for (uint32_t frameIndex = 0; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex) {
+    vk::DescriptorImageInfo shadowSamplerInfo {
+        .sampler = *mShadowPass.GetShadowSampler()
+    };
+
+    std::array<
+        vk::DescriptorImageInfo,
+        MAX_SHADOW_DIRECTIONAL_LIGHTS
+    > directionalShadowInfos{};
+
+    const auto& directionalShadowMaps =
+        mShadowPass.GetDirectionalShadowMaps();
+
+    for (uint32_t i = 0;
+         i < MAX_SHADOW_DIRECTIONAL_LIGHTS;
+         ++i) {
+        directionalShadowInfos[i] = {
+            .imageView =
+                *directionalShadowMaps[i].image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
+        };
+    }
+
+    std::array<
+        vk::DescriptorImageInfo,
+        MAX_SHADOW_POINT_LIGHTS
+    > pointShadowInfos{};
+
+    const auto& pointShadowMaps =
+        mShadowPass.GetPointShadowMaps();
+
+    for (uint32_t i = 0;
+         i < MAX_SHADOW_POINT_LIGHTS;
+         ++i) {
+        pointShadowInfos[i] = {
+            .imageView =
+                *pointShadowMaps[i].image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
+        };
+    }
+
+    for (uint32_t frameIndex = 0;
+         frameIndex < MAX_FRAMES_IN_FLIGHT;
+         ++frameIndex) {
         const GBuffer& gbuffer =
             mGBuffers[frameIndex];
 
         vk::DescriptorImageInfo albedoInfo {
-            .sampler = nullptr,
-            .imageView = *gbuffer.albedo.image.view,
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView =
+                *gbuffer.albedo.image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         vk::DescriptorImageInfo normalInfo {
-            .sampler = nullptr,
-            .imageView = *gbuffer.normal.image.view,
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView =
+                *gbuffer.normal.image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         vk::DescriptorImageInfo depthInfo {
-            .sampler = nullptr,
-            .imageView = *gbuffer.depth.image.view,
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView =
+                *gbuffer.depth.image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
         vk::DescriptorImageInfo aoInfo {
-            .sampler = nullptr,
-            .imageView = *mAOImages[frameIndex].image.view,
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+            .imageView =
+                *mAOImages[frameIndex].image.view,
+            .imageLayout =
+                vk::ImageLayout::eShaderReadOnlyOptimal
         };
 
-        std::array<vk::WriteDescriptorSet, 5>
+        std::array<vk::WriteDescriptorSet, 8>
             writes {
                 vk::WriteDescriptorSet {
-                    .dstSet = *mDescriptors.sets[frameIndex],
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
                     .dstBinding = 0,
                     .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
                     .pImageInfo = &albedoInfo
                 },
                 vk::WriteDescriptorSet {
-                    .dstSet = *mDescriptors.sets[frameIndex],
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
                     .dstBinding = 1,
                     .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
                     .pImageInfo = &normalInfo
                 },
                 vk::WriteDescriptorSet {
-                    .dstSet = *mDescriptors.sets[frameIndex],
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
                     .dstBinding = 2,
                     .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
                     .pImageInfo = &depthInfo
                 },
-
                 vk::WriteDescriptorSet {
-                    .dstSet = *mDescriptors.sets[frameIndex],
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
                     .dstBinding = 3,
                     .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eSampledImage,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
                     .pImageInfo = &aoInfo
                 },
                 vk::WriteDescriptorSet {
-                    .dstSet = *mDescriptors.sets[frameIndex],
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
                     .dstBinding = 4,
                     .descriptorCount = 1,
-                    .descriptorType = vk::DescriptorType::eSampler,
+                    .descriptorType =
+                        vk::DescriptorType::eSampler,
                     .pImageInfo = &samplerInfo
                 },
+                vk::WriteDescriptorSet {
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
+                    .dstBinding = 5,
+                    .descriptorCount =
+                        MAX_SHADOW_DIRECTIONAL_LIGHTS,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
+                    .pImageInfo =
+                        directionalShadowInfos.data()
+                },
+                vk::WriteDescriptorSet {
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
+                    .dstBinding = 6,
+                    .descriptorCount =
+                        MAX_SHADOW_POINT_LIGHTS,
+                    .descriptorType =
+                        vk::DescriptorType::eSampledImage,
+                    .pImageInfo =
+                        pointShadowInfos.data()
+                },
+                vk::WriteDescriptorSet {
+                    .dstSet =
+                        *mDescriptors.sets[frameIndex],
+                    .dstBinding = 7,
+                    .descriptorCount = 1,
+                    .descriptorType =
+                        vk::DescriptorType::eSampler,
+                    .pImageInfo = &shadowSamplerInfo
+                }
             };
 
-        GraphicsCommands::WriteDescriptors(writes);
+        GraphicsCommands::WriteDescriptors(
+            writes
+        );
     }
 }

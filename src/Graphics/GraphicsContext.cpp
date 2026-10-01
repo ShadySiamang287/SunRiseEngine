@@ -503,7 +503,8 @@ void GraphicsContext::TransitionImageLayoutImmediate(
     vk::AccessFlags2 dst_access_mask,
     vk::PipelineStageFlags2 src_stage_mask,
     vk::PipelineStageFlags2 dst_stage_mask,
-    vk::ImageAspectFlags aspectMask
+    vk::ImageAspectFlags aspectMask,
+    uint32_t layerCount
 ) {
     ImmediateSubmit([&](vk::raii::CommandBuffer& cmd) {
     // 3. Record the barrier
@@ -522,7 +523,7 @@ void GraphicsContext::TransitionImageLayoutImmediate(
             .baseMipLevel = 0,
             .levelCount = 1,
             .baseArrayLayer = 0,
-            .layerCount = 1
+            .layerCount = layerCount
         }
     };
 

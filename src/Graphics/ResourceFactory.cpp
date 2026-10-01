@@ -136,20 +136,27 @@ vk::raii::PipelineLayout ResourceFactory::CreatePipelineLayout(vk::ShaderStageFl
 }
 
 vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName) {
-    vk::PipelineShaderStageCreateInfo vertShaderStageInfo = {
-        .stage = vk::ShaderStageFlagBits::eVertex,
-        .module = mInstancePtr->mShaderCachePtr->GetShader(config.vertexFile),
-        .pName = config.vertexName.c_str()
-    };
-    vk::PipelineShaderStageCreateInfo fragShaderStageInfo = {
-        .stage = vk::ShaderStageFlagBits::eFragment,
-        .module = mInstancePtr->mShaderCachePtr->GetShader(config.fragFile),
-        .pName = config.fragName.c_str()
-    };
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
 
-    vk::PipelineShaderStageCreateInfo shaderStages[] = {
-        vertShaderStageInfo, fragShaderStageInfo
-    };
+    shaderStages.push_back({
+        .stage = vk::ShaderStageFlagBits::eVertex,
+        .module =
+            mInstancePtr->mShaderCachePtr->GetShader(
+                config.vertexFile
+            ),
+        .pName = config.vertexName.c_str()
+    });
+
+    if (!config.fragFile.empty()) {
+        shaderStages.push_back({
+            .stage = vk::ShaderStageFlagBits::eFragment,
+            .module =
+                mInstancePtr->mShaderCachePtr->GetShader(
+                    config.fragFile
+                ),
+            .pName = config.fragName.c_str()
+        });
+    }
 
     vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 
@@ -178,7 +185,7 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
         .polygonMode             = vk::PolygonMode::eFill,
         .cullMode                = vk::CullModeFlagBits::eBack,
         .frontFace               = vk::FrontFace::eCounterClockwise,
-        .depthBiasEnable         = vk::False,
+        .depthBiasEnable         = config.depthBiasEnable,
         .lineWidth               = 1.0f
     };
 
@@ -203,8 +210,24 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
     vk::PipelineColorBlendStateCreateInfo colorBlending{
         .logicOpEnable = vk::False, .logicOp = vk::LogicOp::eCopy, .attachmentCount = static_cast<uint32_t>(colorBlendAttachements.size()), .pAttachments = colorBlendAttachements.data()};
 
-    std::vector<vk::DynamicState>      dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor, vk::DynamicState::eDepthTestEnable, vk::DynamicState::eDepthWriteEnable};
-    vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()), .pDynamicStates = dynamicStates.data()};
+    std::vector<vk::DynamicState> dynamicStates = {
+        vk::DynamicState::eViewport,
+        vk::DynamicState::eScissor,
+        vk::DynamicState::eDepthTestEnable,
+        vk::DynamicState::eDepthWriteEnable
+    };
+
+    if (config.depthBiasEnable) {
+        dynamicStates.push_back(
+            vk::DynamicState::eDepthBias
+        );
+    }
+
+    vk::PipelineDynamicStateCreateInfo dynamicState{
+        .dynamicStateCount =
+            static_cast<uint32_t>(dynamicStates.size()),
+        .pDynamicStates = dynamicStates.data()
+    };
     
     vk::PipelineRenderingCreateInfo renderingInfo {
         .colorAttachmentCount = static_cast<uint32_t>(config.colorAttachmentFormats.size()),
@@ -221,8 +244,9 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
     };
 
     vk::GraphicsPipelineCreateInfo graphicsInfo{
-        .stageCount = 2,
-        .pStages = shaderStages,
+        .stageCount =
+            static_cast<uint32_t>(shaderStages.size()),
+        .pStages = shaderStages.data(),
 
         .pVertexInputState = &vertexInputInfo,
         .pInputAssemblyState = &inputAssembly,
@@ -626,22 +650,28 @@ RenderImage ResourceFactory::CreateRenderImage(
     vk::Extent2D extent,
     vk::ImageLayout initialLayout,
     vk::ImageUsageFlags usageFlags,
-    vk::ImageAspectFlags aspectFlags) {
-
+    vk::ImageAspectFlags aspectFlags,
+    uint32_t arrayLayers,
+    vk::ImageViewType viewType,
+    vk::ImageCreateFlags flags
+) {
     RenderImage image;
     image.format = format;
     image.extent = extent;
     image.layout = vk::ImageLayout::eUndefined;
     image.aspect = aspectFlags;
-    image.mAllocator = mInstancePtr->mGraphicsContextPtr->mAllocator;
+    image.layerCount = arrayLayers;
+    image.mAllocator =
+        mInstancePtr->mGraphicsContextPtr->mAllocator;
 
     const vk::ImageCreateInfo createInfo {
         .sType = vk::StructureType::eImageCreateInfo,
+        .flags = flags,
         .imageType = vk::ImageType::e2D,
         .format = format,
         .extent = {extent.width, extent.height, 1},
         .mipLevels = 1,
-        .arrayLayers = 1,
+        .arrayLayers = arrayLayers,
         .samples = vk::SampleCountFlagBits::e1,
         .tiling = vk::ImageTiling::eOptimal,
         .usage = usageFlags
@@ -655,7 +685,9 @@ RenderImage ResourceFactory::CreateRenderImage(
 
     const VkResult result = vmaCreateImage(
         image.mAllocator,
-        reinterpret_cast<const VkImageCreateInfo*>(&createInfo),
+        reinterpret_cast<const VkImageCreateInfo*>(
+            &createInfo
+        ),
         &allocInfo,
         &rawImage,
         &image.image.allocation,
@@ -663,21 +695,23 @@ RenderImage ResourceFactory::CreateRenderImage(
     );
 
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create render image");
+        throw std::runtime_error(
+            "Failed to create render image"
+        );
     }
 
     image.image.image = rawImage;
 
-    vk::ImageViewCreateInfo imageView {
+    const vk::ImageViewCreateInfo imageView {
         .image = image.image.image,
-        .viewType = vk::ImageViewType::e2D,
+        .viewType = viewType,
         .format = format,
         .subresourceRange = {
             .aspectMask = aspectFlags,
             .baseMipLevel = 0,
             .levelCount = 1,
             .baseArrayLayer = 0,
-            .layerCount = 1
+            .layerCount = arrayLayers
         }
     };
 
@@ -693,12 +727,15 @@ RenderImage ResourceFactory::CreateRenderImage(
 
         switch (initialLayout) {
             case vk::ImageLayout::eShaderReadOnlyOptimal:
-                initialAccess = vk::AccessFlagBits2::eShaderRead;
-                initialStage = vk::PipelineStageFlagBits2::eFragmentShader;
+                initialAccess =
+                    vk::AccessFlagBits2::eShaderRead;
+                initialStage =
+                    vk::PipelineStageFlagBits2::eFragmentShader;
                 break;
 
             case vk::ImageLayout::eColorAttachmentOptimal:
-                initialAccess = vk::AccessFlagBits2::eColorAttachmentWrite;
+                initialAccess =
+                    vk::AccessFlagBits2::eColorAttachmentWrite;
                 initialStage =
                     vk::PipelineStageFlagBits2::eColorAttachmentOutput;
                 break;
@@ -712,20 +749,23 @@ RenderImage ResourceFactory::CreateRenderImage(
                 break;
 
             default:
-                initialStage = vk::PipelineStageFlagBits2::eAllCommands;
+                initialStage =
+                    vk::PipelineStageFlagBits2::eAllCommands;
                 break;
         }
 
-        mInstancePtr->mGraphicsContextPtr->TransitionImageLayoutImmediate(
-            image.image.image,
-            vk::ImageLayout::eUndefined,
-            initialLayout,
-            {},
-            initialAccess,
-            vk::PipelineStageFlagBits2::eNone,
-            initialStage,
-            aspectFlags
-        );
+        mInstancePtr->mGraphicsContextPtr
+            ->TransitionImageLayoutImmediate(
+                image.image.image,
+                vk::ImageLayout::eUndefined,
+                initialLayout,
+                {},
+                initialAccess,
+                vk::PipelineStageFlagBits2::eNone,
+                initialStage,
+                aspectFlags,
+                arrayLayers
+            );
 
         image.layout = initialLayout;
         image.access = initialAccess;
@@ -733,6 +773,40 @@ RenderImage ResourceFactory::CreateRenderImage(
     }
 
     return image;
+}
+
+vk::raii::ImageView ResourceFactory::CreateImageView(
+    const RenderImage& image,
+    vk::ImageViewType viewType,
+    uint32_t baseArrayLayer,
+    uint32_t layerCount
+) {
+    if (
+        baseArrayLayer + layerCount >
+        image.layerCount
+    ) {
+        throw std::out_of_range(
+            "CreateImageView layer range exceeds image"
+        );
+    }
+
+    const vk::ImageViewCreateInfo viewInfo {
+        .image = image.image.image,
+        .viewType = viewType,
+        .format = image.format,
+        .subresourceRange = {
+            .aspectMask = image.aspect,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = baseArrayLayer,
+            .layerCount = layerCount
+        }
+    };
+
+    return vk::raii::ImageView(
+        mInstancePtr->mGraphicsContextPtr->mDevice,
+        viewInfo
+    );
 }
 
 ResourceFactory* ResourceFactory::mInstancePtr = nullptr;

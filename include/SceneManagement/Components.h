@@ -206,11 +206,13 @@ namespace SUN {
     struct DirectionalLightComponent {
         glm::vec3 Colour{1.f};
         float intensity;
+        bool CastShadows = true;
     };
 
     struct PointLightComponent {
         glm::vec3 Colour{1.f};
         float intensity;
         float range = 10.f;
+        bool CastShadows = true;
     };
 }

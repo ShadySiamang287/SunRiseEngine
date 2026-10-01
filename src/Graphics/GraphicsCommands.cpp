@@ -374,6 +374,32 @@ void GraphicsCommands::PushCullConstants(
     );
 }
 
+void GraphicsCommands::PushShadowConstants(
+    vk::raii::PipelineLayout& layout,
+    const ShadowPushConstants& constants
+) {
+    if (!mContextPtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "Graphics commands not registered to context!"
+        );
+        return;
+    }
+
+    auto& cmd =
+        mContextPtr->mFrames[
+            mContextPtr->mFrameIndex
+        ].commandBuffer;
+
+    cmd.pushConstants(
+        *layout,
+        vk::ShaderStageFlagBits::eVertex,
+        0,
+        sizeof(ShadowPushConstants),
+        &constants
+    );
+}
+
 void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
@@ -436,6 +462,31 @@ void GraphicsCommands::SetDepthWriteEnable(bool state){
     }
     auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
     cmd.setDepthWriteEnable(state);
+}
+
+void GraphicsCommands::SetDepthBias(
+    float constantFactor,
+    float clamp,
+    float slopeFactor
+) {
+    if (!mContextPtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "Graphics commands not registered to context!"
+        );
+        return;
+    }
+
+    auto& cmd =
+        mContextPtr->mFrames[
+            mContextPtr->mFrameIndex
+        ].commandBuffer;
+
+    cmd.setDepthBias(
+        constantFactor,
+        clamp,
+        slopeFactor
+    );
 }
 
 void GraphicsCommands::WriteDescriptors(std::span<const vk::WriteDescriptorSet> writes) {
@@ -520,7 +571,8 @@ void GraphicsCommands::TransitionImages(std::span<const ImageTransition> transit
                 transition.newAccess,
                 image.stage,
                 transition.newStage,
-                image.aspect
+                image.aspect,
+                image.layerCount
             )
         );
     }
@@ -573,7 +625,8 @@ vk::ImageMemoryBarrier2 GraphicsCommands::MakeImageBarrier(
                 vk::AccessFlags2 dstAccess,
                 vk::PipelineStageFlags2 srcStage,
                 vk::PipelineStageFlags2 dstStage,
-                vk::ImageAspectFlags aspect) {
+                vk::ImageAspectFlags aspect,
+                uint32_t layerCount) {
     return {
         .srcStageMask = srcStage,
         .srcAccessMask = srcAccess,
@@ -594,7 +647,7 @@ vk::ImageMemoryBarrier2 GraphicsCommands::MakeImageBarrier(
             .baseMipLevel = 0,
             .levelCount = 1,
             .baseArrayLayer = 0,
-            .layerCount = 1
+            .layerCount = layerCount
         }
     };
 }
