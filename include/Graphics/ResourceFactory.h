@@ -74,6 +74,12 @@ namespace SUN {
         static DescriptorResources CreateBindlessTextureResources(uint32_t maxTextures);
         static vk::raii::PipelineLayout CreatePipelineLayout(vk::ShaderStageFlags flags, uint32_t pushConstantsSize, DescriptorResources* resources = nullptr);
         static vk::raii::Pipeline CreatePipeline(const PipelineConfig& config, vk::raii::PipelineLayout& layout, std::string debugName);
+        static vk::raii::Pipeline CreateComputePipeline(
+            const std::filesystem::path& shaderFile,
+            const std::string& entryName,
+            vk::raii::PipelineLayout& layout,
+            const std::string& debugName
+        );
 
         static Texture2D CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, bool srgb);
 

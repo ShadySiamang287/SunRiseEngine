@@ -265,6 +265,46 @@ vk::raii::Pipeline ResourceFactory::CreatePipeline(const PipelineConfig& config,
     return std::move(pipeline);
 }
 
+vk::raii::Pipeline ResourceFactory::CreateComputePipeline(
+    const std::filesystem::path& shaderFile,
+    const std::string& entryName,
+    vk::raii::PipelineLayout& layout,
+    const std::string& debugName
+) {
+    vk::PipelineShaderStageCreateInfo shaderStage {
+        .stage = vk::ShaderStageFlagBits::eCompute,
+        .module =
+            mInstancePtr->mShaderCachePtr->GetShader(
+                shaderFile
+            ),
+        .pName = entryName.c_str()
+    };
+
+    const vk::ComputePipelineCreateInfo pipelineInfo {
+        .stage = shaderStage,
+        .layout = *layout
+    };
+
+    vk::raii::Pipeline pipeline {
+        mInstancePtr->mGraphicsContextPtr->mDevice,
+        nullptr,
+        pipelineInfo
+    };
+
+    const vk::DebugUtilsObjectNameInfoEXT nameInfo {
+        .objectType = vk::ObjectType::ePipeline,
+        .objectHandle = reinterpret_cast<uint64_t>(
+            static_cast<VkPipeline>(*pipeline)
+        ),
+        .pObjectName = debugName.c_str()
+    };
+
+    mInstancePtr->mGraphicsContextPtr->mDevice
+        .setDebugUtilsObjectNameEXT(nameInfo);
+
+    return pipeline;
+}
+
 Texture2D ResourceFactory::CreateTexture2D(const void* pixels, uint32_t width, uint32_t height, bool srgb) {
     if (!pixels || width == 0 || height == 0) {
         throw std::invalid_argument("CreateTexture2D requires valid pixel data and non-zero dimensions");

@@ -26,7 +26,14 @@ namespace SUN {
 
         static void BeginDraw();
         static void DrawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance);
+        static void DrawIndexedIndirect(
+            vk::Buffer buffer,
+            vk::DeviceSize offset,
+            uint32_t drawCount,
+            uint32_t stride
+        );
         static void Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
+        static void Dispatch(uint32_t x, uint32_t y = 1, uint32_t z = 1);
         static void DrawFullScreenTriangle();
         static void EndDraw();
 
@@ -39,12 +46,18 @@ namespace SUN {
         static void EndLabel();
 
         static void BindPipeline(vk::raii::Pipeline& pipeline);
+        static void BindComputePipeline(vk::raii::Pipeline& pipeline);
         static void BindGeometryBuffer(const GeometryBuffer& buffer);
         static void BindDescriptorSets(vk::raii::PipelineLayout& layout, const DescriptorResources& resources);
         static void PushConstants(
             vk::raii::PipelineLayout& layout,
             vk::ShaderStageFlags flags,
             const PushConstants& constants
+        );
+
+        static void PushCullConstants(
+            vk::raii::PipelineLayout& layout,
+            const CullPushConstants& constants
         );
 
         static void SetViewportAndScissor(vk::Extent2D extent);
@@ -94,6 +107,15 @@ namespace SUN {
         );
 
         static void ImageBarriers(std::span<const vk::ImageMemoryBarrier2> barriers);
+
+        static void BufferBarrier(
+            vk::Buffer buffer,
+            vk::DeviceSize size,
+            vk::AccessFlags2 srcAccess,
+            vk::AccessFlags2 dstAccess,
+            vk::PipelineStageFlags2 srcStage,
+            vk::PipelineStageFlags2 dstStage
+        );
 
         static GraphicsContext* mContextPtr;
     };

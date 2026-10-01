@@ -525,13 +525,20 @@ GeometryBuffer::UploadGeometryBatch(
 
 // ---------------- ShaderBuffer ----------------
 
-void ShaderBuffer::Init(size_t elementSize, bool storageBuffer) {
+void ShaderBuffer::Init(
+    size_t elementSize,
+    bool storageBuffer,
+    vk::BufferUsageFlags additionalUsage
+) {
     mIsStorage = storageBuffer;
 
     vk::BufferUsageFlags usage = storageBuffer
         ? vk::BufferUsageFlagBits::eStorageBuffer
         : vk::BufferUsageFlagBits::eUniformBuffer;
-    usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
+
+    usage |=
+        vk::BufferUsageFlagBits::eShaderDeviceAddress |
+        additionalUsage;
 
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         mBuffers[i].Create(elementSize, usage, VMA_MEMORY_USAGE_AUTO,

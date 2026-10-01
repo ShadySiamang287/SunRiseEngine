@@ -178,7 +178,9 @@ bool GraphicsContext::isDeviceSuitable(vk::raii::PhysicalDevice const & physical
                                                         vk::PhysicalDeviceVulkan11Features,
                                                         vk::PhysicalDeviceVulkan12Features,
                                                         vk::PhysicalDeviceVulkan13Features>();
-    bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+    bool supportsRequiredFeatures =
+                            features.template get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect &&
+                            features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorIndexing &&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().shaderSampledImageArrayNonUniformIndexing &&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending &&
@@ -231,6 +233,10 @@ void GraphicsContext::CreateLogicalDevice(){
                 .dynamicRendering = true,
             },            // vk::PhysicalDeviceVulkan13Features
         };
+
+    featureChain
+        .template get<vk::PhysicalDeviceFeatures2>()
+        .features.multiDrawIndirect = true;
     
     float                     queuePriority = 0.5f;
     vk::DeviceQueueCreateInfo deviceQueueCreateInfo{.queueFamilyIndex = mQueueIndex, .queueCount = 1, .pQueuePriorities = &queuePriority};

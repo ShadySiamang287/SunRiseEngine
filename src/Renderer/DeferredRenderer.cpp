@@ -7,75 +7,8 @@
 
 #include <algorithm>
 #include <array>
-#include <numeric>
 
 using namespace SUN;
-
-namespace {
-    bool IsOutsideFrustum(
-        const BoundingBox& bounds,
-        const glm::mat4& model,
-        const glm::mat4& viewProjection
-    ) {
-        const glm::vec3 minimum = bounds.min;
-        const glm::vec3 maximum = bounds.max;
-
-        bool outsideLeft = true;
-        bool outsideRight = true;
-        bool outsideBottom = true;
-        bool outsideTop = true;
-        bool outsideNear = true;
-        bool outsideFar = true;
-
-        for (uint32_t cornerIndex = 0;
-             cornerIndex < 8;
-             ++cornerIndex) {
-            const glm::vec3 localCorner {
-                (cornerIndex & 1u)
-                    ? maximum.x
-                    : minimum.x,
-                (cornerIndex & 2u)
-                    ? maximum.y
-                    : minimum.y,
-                (cornerIndex & 4u)
-                    ? maximum.z
-                    : minimum.z
-            };
-
-            const glm::vec4 clip =
-                viewProjection *
-                model *
-                glm::vec4(localCorner, 1.0f);
-
-            outsideLeft &=
-                clip.x < -clip.w;
-
-            outsideRight &=
-                clip.x > clip.w;
-
-            outsideBottom &=
-                clip.y < -clip.w;
-
-            outsideTop &=
-                clip.y > clip.w;
-
-            // Vulkan uses a zero-to-one depth clip range.
-            outsideNear &=
-                clip.z < 0.0f;
-
-            outsideFar &=
-                clip.z > clip.w;
-        }
-
-        return
-            outsideLeft ||
-            outsideRight ||
-            outsideBottom ||
-            outsideTop ||
-            outsideNear ||
-            outsideFar;
-    }
-}
 
 DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
     : mAssetManager(assetManager) {
@@ -105,23 +38,90 @@ DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
         .useVertexInput = true
     };
 
-    mPipeline = ResourceFactory::CreatePipeline(gBufferConfig, mPipelineLayout, "GBuffer pipeline");
+    mPipeline =
+        ResourceFactory::CreatePipeline(
+            gBufferConfig,
+            mPipelineLayout,
+            "GBuffer pipeline"
+        );
 
-    mSortOrder.reserve(MAX_OBJECTS);
+    mCullPipelineLayout =
+        ResourceFactory::CreatePipelineLayout(
+            vk::ShaderStageFlagBits::eCompute,
+            sizeof(CullPushConstants)
+        );
+
+    mCullPipeline =
+        ResourceFactory::CreateComputePipeline(
+            "./shaders/cullMain.spv",
+            "cullMain",
+            mCullPipelineLayout,
+            "GPU frustum culling pipeline"
+        );
+
+    mIndirectBuffer.Init(
+        sizeof(vk::DrawIndexedIndirectCommand) * MAX_OBJECTS,
+        true,
+        vk::BufferUsageFlagBits::eIndirectBuffer
+    );
+
     mObjects.reserve(MAX_OBJECTS);
-    mBatches.reserve(256);
 
     CreateGBuffers(GraphicsCommands::GetSwapchainExtent());
 }
 
 void DeferredRenderer::Prepare(
-    const RenderQueue& renderQueue,
-    const Camera& camera
+    const RenderQueue& renderQueue
 ) {
-    BuildBatches(renderQueue, camera);
+    BuildObjects(renderQueue);
 }
 
 void DeferredRenderer::Execute(const RenderContext& context, const PushConstants& pushConstants) {
+
+    if (mDrawCount > 0) {
+        GraphicsCommands::BeginLabel(
+            "GPU frustum culling",
+            {0.85F, 0.55F, 0.15F, 1.0F}
+        );
+
+        GraphicsCommands::BindComputePipeline(
+            mCullPipeline
+        );
+
+        const CullPushConstants cullConstants {
+            .frameDataAddress =
+                pushConstants.frameDataAddress,
+            .objectDataAddress =
+                pushConstants.objectDataAddress,
+            .indirectCommandAddress =
+                mIndirectBuffer.GetDeviceAddress(),
+            .objectCount = mDrawCount
+        };
+
+        GraphicsCommands::PushCullConstants(
+            mCullPipelineLayout,
+            cullConstants
+        );
+
+        constexpr uint32_t CULL_GROUP_SIZE = 64;
+
+        GraphicsCommands::Dispatch(
+            (mDrawCount + CULL_GROUP_SIZE - 1) /
+                CULL_GROUP_SIZE
+        );
+
+        GraphicsCommands::BufferBarrier(
+            mIndirectBuffer.GetHandle(),
+            sizeof(vk::DrawIndexedIndirectCommand) *
+                mDrawCount,
+            vk::AccessFlagBits2::eShaderWrite,
+            vk::AccessFlagBits2::eIndirectCommandRead,
+            vk::PipelineStageFlagBits2::eComputeShader,
+            vk::PipelineStageFlagBits2::eDrawIndirect
+        );
+
+        GraphicsCommands::EndLabel();
+    }
 
     GBuffer& gbuffer =
         mGBuffers[context.frameIndex];
@@ -234,19 +234,16 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
         pushConstants
     );
 
-    if (!mBatches.empty()) {
+    if (mDrawCount > 0) {
         GraphicsCommands::BindGeometryBuffer(
             mAssetManager.GetGeometryBuffer()
         );
-    }
 
-    for (const auto& batch : mBatches) {
-        GraphicsCommands::DrawIndexed(
-            batch.mesh->indexCount,
-            batch.instanceCount,
-            batch.mesh->firstIndex,
-            batch.mesh->vertexOffset,
-            batch.firstInstance
+        GraphicsCommands::DrawIndexedIndirect(
+            mIndirectBuffer.GetHandle(),
+            0,
+            mDrawCount,
+            sizeof(vk::DrawIndexedIndirectCommand)
         );
     }
 
@@ -327,107 +324,61 @@ void DeferredRenderer::CreateGBuffers(vk::Extent2D extent) {
     }
 }
 
-void DeferredRenderer::BuildBatches(
-    const RenderQueue& renderQueue,
-    const Camera& camera
+void DeferredRenderer::BuildObjects(
+    const RenderQueue& renderQueue
 ) {
     const auto& commands =
         renderQueue.GetCommands();
 
-    const glm::mat4 viewProjection =
-        camera.GetProjectionMatrix() *
-        camera.GetViewMatrix();
+    if (commands.size() > MAX_OBJECTS) {
+        Logger::Log(
+            Logger::WARNING,
+            "Render queue has {} objects, only the first {} "
+            "will be considered for GPU culling",
+            commands.size(),
+            MAX_OBJECTS
+        );
+    }
 
-    mSortOrder.clear();
-    mSortOrder.reserve(
+    mObjects.clear();
+
+    const std::size_t count =
         std::min(
             commands.size(),
             static_cast<std::size_t>(MAX_OBJECTS)
-        )
-    );
+        );
 
-    mCulledObjectCount = 0;
-
-    std::size_t visibleCount = 0;
-
-    for (uint32_t index = 0;
-         index < static_cast<uint32_t>(commands.size());
-         ++index) {
+    for (std::size_t i = 0; i < count; ++i) {
         const RenderCommand& command =
-            commands[index];
+            commands[i];
 
         if (!command.mesh) {
             continue;
         }
 
-        if (IsOutsideFrustum(
-                command.mesh->bounds,
-                command.Transform,
-                viewProjection)) {
-            ++mCulledObjectCount;
-            continue;
-        }
-
-        ++visibleCount;
-
-        if (mSortOrder.size() < MAX_OBJECTS) {
-            mSortOrder.push_back(index);
-        }
-    }
-
-    if (visibleCount > MAX_OBJECTS) {
-        Logger::Log(
-            Logger::WARNING,
-            "Render queue has {} visible objects after frustum culling, "
-            "only the first {} will be drawn",
-            visibleCount,
-            MAX_OBJECTS
-        );
-    }
-
-    std::ranges::sort(
-        mSortOrder,
-        {},
-        [&](uint32_t i) {
-            return commands[i].mesh;
-        }
-    );
-
-    mObjects.clear();
-    mBatches.clear();
-
-    for (uint32_t index : mSortOrder) {
-        const RenderCommand& command =
-            commands[index];
-
-        if (mBatches.empty() ||
-            mBatches.back().mesh != command.mesh) {
-            mBatches.push_back({
-                command.mesh,
-                static_cast<uint32_t>(
-                    mObjects.size()
-                ),
-                0
-            });
-        }
-
-        mBatches.back().instanceCount++;
+        const BoundingBox& bounds =
+            command.mesh->bounds;
 
         mObjects.push_back({
-            command.Transform,
-            glm::mat4(
+            .model = command.Transform,
+            .normal = glm::mat4(
                 glm::transpose(
                     glm::inverse(
-                        glm::mat3(
-                            command.Transform
-                        )
+                        glm::mat3(command.Transform)
                     )
                 )
             ),
-            command.materialIndex,
-            0,
-            0,
-            0
+            .boundsCenter =
+                glm::vec4(bounds.Center(), 1.0f),
+            .boundsExtents =
+                glm::vec4(bounds.Extents(), 0.0f),
+            .materialIndex = command.materialIndex,
+            .firstIndex = command.mesh->firstIndex,
+            .indexCount = command.mesh->indexCount,
+            .vertexOffset = command.mesh->vertexOffset
         });
     }
+
+    mDrawCount =
+        static_cast<uint32_t>(mObjects.size());
 }

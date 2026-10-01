@@ -109,7 +109,11 @@ namespace SUN{
 
     class ShaderBuffer {
     public:
-        void Init(size_t elementSize, bool storageBuffer = false);
+        void Init(
+            size_t elementSize,
+            bool storageBuffer = false,
+            vk::BufferUsageFlags additionalUsage = {}
+        );
         void Destroy();
 
         void Upload(const void* data, size_t size, size_t offset = 0);

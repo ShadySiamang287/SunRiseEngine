@@ -36,6 +36,16 @@ namespace SUN {
         vk::DeviceAddress pointLightDataAddress;
     };
 
+    struct CullPushConstants {
+        vk::DeviceAddress frameDataAddress;
+        vk::DeviceAddress objectDataAddress;
+        vk::DeviceAddress indirectCommandAddress;
+        uint32_t objectCount = 0;
+        uint32_t padding = 0;
+    };
+
+    static_assert(sizeof(CullPushConstants) == 32);
+
     struct AllocatedImage {
         vk::Image image{nullptr};
         vk::raii::ImageView view{nullptr};

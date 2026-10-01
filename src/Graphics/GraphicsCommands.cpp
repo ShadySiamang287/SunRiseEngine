@@ -133,6 +133,31 @@ void GraphicsCommands::DrawIndexed(int indexCount, int instanceCount, int firstI
     cmd.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
+void GraphicsCommands::DrawIndexedIndirect(
+    vk::Buffer buffer,
+    vk::DeviceSize offset,
+    uint32_t drawCount,
+    uint32_t stride
+) {
+    if (!mContextPtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "Graphics commands not registered to context!"
+        );
+        return;
+    }
+
+    auto& cmd =
+        mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+
+    cmd.drawIndexedIndirect(
+        buffer,
+        offset,
+        drawCount,
+        stride
+    );
+}
+
 void GraphicsCommands::Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
@@ -149,6 +174,25 @@ void GraphicsCommands::DrawFullScreenTriangle() {
     }
     auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
     cmd.draw(3, 1, 0, 0);
+}
+
+void GraphicsCommands::Dispatch(
+    uint32_t x,
+    uint32_t y,
+    uint32_t z
+) {
+    if (!mContextPtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "Graphics commands not registered to context!"
+        );
+        return;
+    }
+
+    auto& cmd =
+        mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+
+    cmd.dispatch(x, y, z);
 }
 
 void GraphicsCommands::EndDraw(){
@@ -237,6 +281,26 @@ void GraphicsCommands::BindPipeline(vk::raii::Pipeline& pipeline) {
     cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 }
 
+void GraphicsCommands::BindComputePipeline(
+    vk::raii::Pipeline& pipeline
+) {
+    if (!mContextPtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "Graphics commands not registered to context!"
+        );
+        return;
+    }
+
+    auto& cmd =
+        mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+
+    cmd.bindPipeline(
+        vk::PipelineBindPoint::eCompute,
+        *pipeline
+    );
+}
+
 void GraphicsCommands::BindDescriptorSets(vk::raii::PipelineLayout& layout, const DescriptorResources& resources) {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
@@ -255,6 +319,30 @@ void GraphicsCommands::PushConstants(vk::raii::PipelineLayout& layout, vk::Shade
 
     auto& cmd = mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
     cmd.pushConstants(*layout, flags, 0, sizeof(SUN::PushConstants), &constants);
+}
+
+void GraphicsCommands::PushCullConstants(
+    vk::raii::PipelineLayout& layout,
+    const CullPushConstants& constants
+) {
+    if (!mContextPtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "Graphics commands not registered to context!"
+        );
+        return;
+    }
+
+    auto& cmd =
+        mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+
+    cmd.pushConstants(
+        *layout,
+        vk::ShaderStageFlagBits::eCompute,
+        0,
+        sizeof(CullPushConstants),
+        &constants
+    );
 }
 
 void GraphicsCommands::BindGeometryBuffer(const GeometryBuffer& buffer) {
@@ -493,6 +581,40 @@ void GraphicsCommands::ImageBarriers(std::span<const vk::ImageMemoryBarrier2> ba
     };
 
     mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer.pipelineBarrier2(dependencyInfo);
+}
+
+void GraphicsCommands::BufferBarrier(
+    vk::Buffer buffer,
+    vk::DeviceSize size,
+    vk::AccessFlags2 srcAccess,
+    vk::AccessFlags2 dstAccess,
+    vk::PipelineStageFlags2 srcStage,
+    vk::PipelineStageFlags2 dstStage
+) {
+    if (!mContextPtr || !buffer || size == 0) {
+        return;
+    }
+
+    const vk::BufferMemoryBarrier2 barrier {
+        .srcStageMask = srcStage,
+        .srcAccessMask = srcAccess,
+        .dstStageMask = dstStage,
+        .dstAccessMask = dstAccess,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = buffer,
+        .offset = 0,
+        .size = size
+    };
+
+    const vk::DependencyInfo dependency {
+        .bufferMemoryBarrierCount = 1,
+        .pBufferMemoryBarriers = &barrier
+    };
+
+    mContextPtr->mFrames[
+        mContextPtr->mFrameIndex
+    ].commandBuffer.pipelineBarrier2(dependency);
 }
 
 GraphicsContext* GraphicsCommands::mContextPtr = nullptr;

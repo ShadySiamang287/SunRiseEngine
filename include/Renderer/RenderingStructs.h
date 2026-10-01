@@ -74,10 +74,14 @@ namespace SUN {
     struct ObjectData {
         glm::mat4 model;
         glm::mat4 normal;
+
+        glm::vec4 boundsCenter{0.0f};
+        glm::vec4 boundsExtents{0.0f};
+
         MaterialID materialIndex = DEFAULT_MATERIAL_ID;
-        uint32_t padding0 = 0;
-        uint32_t padding1 = 0;
-        uint32_t padding2 = 0;
+        uint32_t firstIndex = 0;
+        uint32_t indexCount = 0;
+        int32_t vertexOffset = 0;
     };
 
     struct DrawBatch {
