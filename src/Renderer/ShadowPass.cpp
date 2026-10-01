@@ -73,6 +73,10 @@ ShadowPass::ShadowPass(AssetManager& assetManager)
 
     mIndirectCommands.reserve(MAX_OBJECTS);
 
+    mPointFaceViews.reserve(
+        MAX_SHADOW_POINT_LIGHTS * 6
+    );
+
     CreateShadowMaps();
 }
 
@@ -116,13 +120,14 @@ void ShadowPass::CreateShadowMaps() {
         for (uint32_t face = 0;
              face < 6;
              ++face) {
-            mPointFaceViews[i][face] =
+            mPointFaceViews.emplace_back(
                 ResourceFactory::CreateImageView(
                     mPointShadowMaps[i],
                     vk::ImageViewType::e2D,
                     face,
                     1
-                );
+                )
+            );
         }
     }
 }
@@ -401,7 +406,9 @@ void ShadowPass::Execute(
              face < 6;
              ++face) {
             RenderShadowMap(
-                *mPointFaceViews[i][face],
+                *mPointFaceViews[
+                    i * 6 + face
+                ],
                 shadowMap.extent,
                 mPointMatrices[i][face],
                 pushConstants.objectDataAddress

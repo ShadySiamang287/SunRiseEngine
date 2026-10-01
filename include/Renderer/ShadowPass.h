@@ -78,10 +78,8 @@ namespace SUN {
             MAX_SHADOW_POINT_LIGHTS
         > mPointShadowMaps;
 
-        std::array<
-            std::array<vk::raii::ImageView, 6>,
-            MAX_SHADOW_POINT_LIGHTS
-        > mPointFaceViews;
+        std::vector<vk::raii::ImageView>
+            mPointFaceViews;
 
         std::array<
             glm::mat4,
