@@ -188,6 +188,7 @@ bool GraphicsContext::isDeviceSuitable(vk::raii::PhysicalDevice const & physical
                             features.template get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount &&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&
                             features.template get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress &&
+                            features.template get<vk::PhysicalDeviceVulkan12Features>().drawIndirectCount &&
                             features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
                             features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2;
 
@@ -227,6 +228,7 @@ void GraphicsContext::CreateLogicalDevice(){
                 .descriptorBindingVariableDescriptorCount = true,
                 .runtimeDescriptorArray = true,
                 .bufferDeviceAddress = true,
+                .drawIndirectCount = true,
             },                                     
             {
                 .synchronization2 = true,

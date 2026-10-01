@@ -65,6 +65,12 @@ DeferredRenderer::DeferredRenderer(AssetManager& assetManager)
         vk::BufferUsageFlagBits::eIndirectBuffer
     );
 
+    mVisibleDrawCountBuffer.Init(
+        sizeof(uint32_t),
+        true,
+        vk::BufferUsageFlagBits::eIndirectBuffer
+    );
+
     mObjects.reserve(MAX_OBJECTS);
 
     CreateGBuffers(GraphicsCommands::GetSwapchainExtent());
@@ -74,6 +80,12 @@ void DeferredRenderer::Prepare(
     const RenderQueue& renderQueue
 ) {
     BuildObjects(renderQueue);
+
+    const uint32_t zero = 0;
+    mVisibleDrawCountBuffer.Upload(
+        &zero,
+        sizeof(zero)
+    );
 }
 
 void DeferredRenderer::Execute(const RenderContext& context, const PushConstants& pushConstants) {
@@ -95,6 +107,8 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
                 pushConstants.objectDataAddress,
             .indirectCommandAddress =
                 mIndirectBuffer.GetDeviceAddress(),
+            .visibleDrawCountAddress =
+                mVisibleDrawCountBuffer.GetDeviceAddress(),
             .objectCount = mDrawCount
         };
 
@@ -114,6 +128,15 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
             mIndirectBuffer.GetHandle(),
             sizeof(vk::DrawIndexedIndirectCommand) *
                 mDrawCount,
+            vk::AccessFlagBits2::eShaderWrite,
+            vk::AccessFlagBits2::eIndirectCommandRead,
+            vk::PipelineStageFlagBits2::eComputeShader,
+            vk::PipelineStageFlagBits2::eDrawIndirect
+        );
+
+        GraphicsCommands::BufferBarrier(
+            mVisibleDrawCountBuffer.GetHandle(),
+            sizeof(uint32_t),
             vk::AccessFlagBits2::eShaderWrite,
             vk::AccessFlagBits2::eIndirectCommandRead,
             vk::PipelineStageFlagBits2::eComputeShader,
@@ -239,8 +262,10 @@ void DeferredRenderer::Execute(const RenderContext& context, const PushConstants
             mAssetManager.GetGeometryBuffer()
         );
 
-        GraphicsCommands::DrawIndexedIndirect(
+        GraphicsCommands::DrawIndexedIndirectCount(
             mIndirectBuffer.GetHandle(),
+            0,
+            mVisibleDrawCountBuffer.GetHandle(),
             0,
             mDrawCount,
             sizeof(vk::DrawIndexedIndirectCommand)

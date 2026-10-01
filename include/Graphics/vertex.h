@@ -40,11 +40,12 @@ namespace SUN {
         vk::DeviceAddress frameDataAddress;
         vk::DeviceAddress objectDataAddress;
         vk::DeviceAddress indirectCommandAddress;
+        vk::DeviceAddress visibleDrawCountAddress;
         uint32_t objectCount = 0;
         uint32_t padding = 0;
     };
 
-    static_assert(sizeof(CullPushConstants) == 32);
+    static_assert(sizeof(CullPushConstants) == 40);
 
     struct AllocatedImage {
         vk::Image image{nullptr};

@@ -32,6 +32,14 @@ namespace SUN {
             uint32_t drawCount,
             uint32_t stride
         );
+        static void DrawIndexedIndirectCount(
+            vk::Buffer buffer,
+            vk::DeviceSize offset,
+            vk::Buffer countBuffer,
+            vk::DeviceSize countBufferOffset,
+            uint32_t maxDrawCount,
+            uint32_t stride
+        );
         static void Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
         static void Dispatch(uint32_t x, uint32_t y = 1, uint32_t z = 1);
         static void DrawFullScreenTriangle();

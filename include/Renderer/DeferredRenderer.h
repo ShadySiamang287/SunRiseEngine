@@ -39,6 +39,7 @@ namespace SUN {
 
         std::vector<ObjectData> mObjects;
         ShaderBuffer mIndirectBuffer;
+        ShaderBuffer mVisibleDrawCountBuffer;
         uint32_t mDrawCount = 0;
     };
 }

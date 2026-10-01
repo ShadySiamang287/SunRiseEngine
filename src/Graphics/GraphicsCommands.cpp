@@ -158,6 +158,35 @@ void GraphicsCommands::DrawIndexedIndirect(
     );
 }
 
+void GraphicsCommands::DrawIndexedIndirectCount(
+    vk::Buffer buffer,
+    vk::DeviceSize offset,
+    vk::Buffer countBuffer,
+    vk::DeviceSize countBufferOffset,
+    uint32_t maxDrawCount,
+    uint32_t stride
+) {
+    if (!mContextPtr) {
+        Logger::Log(
+            Logger::ERROR,
+            "Graphics commands not registered to context!"
+        );
+        return;
+    }
+
+    auto& cmd =
+        mContextPtr->mFrames[mContextPtr->mFrameIndex].commandBuffer;
+
+    cmd.drawIndexedIndirectCount(
+        buffer,
+        offset,
+        countBuffer,
+        countBufferOffset,
+        maxDrawCount,
+        stride
+    );
+}
+
 void GraphicsCommands::Draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
     if (!mContextPtr){
         Logger::Log(Logger::ERROR, "Graphics commands not registered to context!");
