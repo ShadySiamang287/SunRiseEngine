@@ -90,6 +90,28 @@ namespace {
         std::vector<std::array<uint64_t, 3>> triangleEdges;
     };
 
+    struct ScaledShapeDiagnostic {
+        std::string name;
+        std::size_t vertexCount = 0;
+        std::size_t indexCount = 0;
+        uint64_t normalizedShapeHash = 0;
+        double referenceEdgeLength = 0.0;
+        std::vector<std::array<uint64_t, 3>> normalizedTriangleEdges;
+    };
+
+    struct AffineDiagnostic {
+        std::string name;
+        uint64_t topologyHash = 0;
+        std::vector<glm::vec3> positions;
+        std::vector<uint32_t> indices;
+    };
+
+    struct AffineMatch {
+        glm::mat3 linear{1.0f};
+        glm::vec3 translation{0.0f};
+        float maxError = 0.0f;
+    };
+
     struct CachedGeometry {
         std::shared_ptr<Mesh> mesh;
         CanonicalGeometry geometry;
@@ -630,6 +652,304 @@ namespace {
         return diagnostic;
     }
 
+    constexpr double SCALE_EDGE_QUANTIZATION = 1000000.0;
+
+    ScaledShapeDiagnostic BuildScaledShapeDiagnostic(
+        std::string name,
+        const std::vector<Vertex>& vertices,
+        const std::vector<uint32_t>& indices
+    ) {
+        ScaledShapeDiagnostic diagnostic;
+        diagnostic.name = std::move(name);
+        diagnostic.vertexCount = vertices.size();
+        diagnostic.indexCount = indices.size();
+
+        std::vector<std::array<double, 3>> triangleEdges;
+        triangleEdges.reserve(indices.size() / 3);
+
+        double longestEdge = 0.0;
+
+        for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
+            const glm::vec3& p0 = vertices[indices[i]].pos;
+            const glm::vec3& p1 = vertices[indices[i + 1]].pos;
+            const glm::vec3& p2 = vertices[indices[i + 2]].pos;
+
+            std::array<double, 3> edges {
+                static_cast<double>(glm::length(p1 - p0)),
+                static_cast<double>(glm::length(p2 - p1)),
+                static_cast<double>(glm::length(p0 - p2))
+            };
+
+            std::sort(edges.begin(), edges.end());
+            longestEdge = std::max(longestEdge, edges[2]);
+            triangleEdges.push_back(edges);
+        }
+
+        diagnostic.referenceEdgeLength = longestEdge;
+
+        if (longestEdge <= 0.0) {
+            return diagnostic;
+        }
+
+        diagnostic.normalizedTriangleEdges.reserve(
+            triangleEdges.size()
+        );
+
+        for (const auto& edges : triangleEdges) {
+            std::array<uint64_t, 3> normalized {
+                static_cast<uint64_t>(std::llround(
+                    (edges[0] / longestEdge) *
+                    SCALE_EDGE_QUANTIZATION
+                )),
+                static_cast<uint64_t>(std::llround(
+                    (edges[1] / longestEdge) *
+                    SCALE_EDGE_QUANTIZATION
+                )),
+                static_cast<uint64_t>(std::llround(
+                    (edges[2] / longestEdge) *
+                    SCALE_EDGE_QUANTIZATION
+                ))
+            };
+
+            diagnostic.normalizedTriangleEdges.push_back(
+                normalized
+            );
+        }
+
+        std::sort(
+            diagnostic.normalizedTriangleEdges.begin(),
+            diagnostic.normalizedTriangleEdges.end()
+        );
+
+        uint64_t hash = FNV_OFFSET_BASIS;
+
+        HashUint64(
+            hash,
+            static_cast<uint64_t>(diagnostic.vertexCount)
+        );
+
+        HashUint64(
+            hash,
+            static_cast<uint64_t>(diagnostic.indexCount)
+        );
+
+        for (const auto& triangle :
+             diagnostic.normalizedTriangleEdges) {
+            HashUint64(hash, triangle[0]);
+            HashUint64(hash, triangle[1]);
+            HashUint64(hash, triangle[2]);
+        }
+
+        diagnostic.normalizedShapeHash = hash;
+        return diagnostic;
+    }
+
+    uint64_t HashRawTopology(
+        std::size_t vertexCount,
+        const std::vector<uint32_t>& indices
+    ) {
+        uint64_t hash = FNV_OFFSET_BASIS;
+
+        HashUint64(hash, static_cast<uint64_t>(vertexCount));
+        HashUint64(hash, static_cast<uint64_t>(indices.size()));
+
+        for (uint32_t index : indices) {
+            HashUint32(hash, index);
+        }
+
+        return hash;
+    }
+
+    float GeometryScale(
+        const std::vector<glm::vec3>& positions
+    ) {
+        if (positions.empty()) {
+            return 1.0f;
+        }
+
+        glm::vec3 minimum = positions.front();
+        glm::vec3 maximum = positions.front();
+
+        for (const glm::vec3& position : positions) {
+            minimum = glm::min(minimum, position);
+            maximum = glm::max(maximum, position);
+        }
+
+        return std::max(glm::length(maximum - minimum), 1.0f);
+    }
+
+    bool RecoverAffineTransform(
+        const AffineDiagnostic& source,
+        const AffineDiagnostic& target,
+        AffineMatch& match
+    ) {
+        if (source.positions.size() != target.positions.size() ||
+            source.indices != target.indices ||
+            source.positions.size() < 3) {
+            return false;
+        }
+
+        const float sourceScale =
+            GeometryScale(source.positions);
+
+        const float basisEpsilon =
+            sourceScale * 1e-6f;
+
+        const std::size_t p0Index = 0;
+        std::size_t p1Index = source.positions.size();
+        std::size_t p2Index = source.positions.size();
+        std::size_t p3Index = source.positions.size();
+
+        const glm::vec3 p0 =
+            source.positions[p0Index];
+
+        for (std::size_t i = 1;
+             i < source.positions.size();
+             ++i) {
+            if (glm::length(source.positions[i] - p0) >
+                basisEpsilon) {
+                p1Index = i;
+                break;
+            }
+        }
+
+        if (p1Index == source.positions.size()) {
+            return false;
+        }
+
+        const glm::vec3 e1 =
+            source.positions[p1Index] - p0;
+
+        for (std::size_t i = 1;
+             i < source.positions.size();
+             ++i) {
+            if (i == p1Index) {
+                continue;
+            }
+
+            const glm::vec3 candidate =
+                source.positions[i] - p0;
+
+            if (glm::length(glm::cross(e1, candidate)) >
+                basisEpsilon * basisEpsilon) {
+                p2Index = i;
+                break;
+            }
+        }
+
+        if (p2Index == source.positions.size()) {
+            return false;
+        }
+
+        const glm::vec3 e2 =
+            source.positions[p2Index] - p0;
+
+        const glm::vec3 sourceNormal =
+            glm::cross(e1, e2);
+
+        for (std::size_t i = 1;
+             i < source.positions.size();
+             ++i) {
+            if (i == p1Index || i == p2Index) {
+                continue;
+            }
+
+            const glm::vec3 candidate =
+                source.positions[i] - p0;
+
+            if (std::abs(glm::dot(sourceNormal, candidate)) >
+                basisEpsilon * basisEpsilon) {
+                p3Index = i;
+                break;
+            }
+        }
+
+        const glm::vec3 q0 =
+            target.positions[p0Index];
+
+        const glm::vec3 f1 =
+            target.positions[p1Index] - q0;
+
+        const glm::vec3 f2 =
+            target.positions[p2Index] - q0;
+
+        glm::vec3 e3;
+        glm::vec3 f3;
+
+        if (p3Index != source.positions.size()) {
+            e3 = source.positions[p3Index] - p0;
+            f3 = target.positions[p3Index] - q0;
+        } else {
+            e3 = glm::normalize(sourceNormal);
+            f3 = glm::normalize(glm::cross(f1, f2));
+        }
+
+        const glm::mat3 sourceBasis(
+            e1,
+            e2,
+            e3
+        );
+
+        const float determinant =
+            glm::determinant(sourceBasis);
+
+        if (std::abs(determinant) <= 1e-8f) {
+            return false;
+        }
+
+        const glm::mat3 targetBasis(
+            f1,
+            f2,
+            f3
+        );
+
+        match.linear =
+            targetBasis * glm::inverse(sourceBasis);
+
+        match.translation =
+            q0 - match.linear * p0;
+
+        const float targetScale =
+            GeometryScale(target.positions);
+
+        const float verifyEpsilon =
+            targetScale * 1e-4f;
+
+        match.maxError = 0.0f;
+
+        for (std::size_t i = 0;
+             i < source.positions.size();
+             ++i) {
+            const glm::vec3 transformed =
+                match.linear * source.positions[i] +
+                match.translation;
+
+            const float error =
+                glm::length(
+                    transformed - target.positions[i]
+                );
+
+            match.maxError =
+                std::max(match.maxError, error);
+
+            if (error > verifyEpsilon) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    glm::vec3 AffineColumnScale(
+        const glm::mat3& linear
+    ) {
+        return {
+            glm::length(linear[0]),
+            glm::length(linear[1]),
+            glm::length(linear[2])
+        };
+    }
+
     uint64_t HashGeometry(const CanonicalGeometry& geometry) {
         uint64_t hash = FNV_OFFSET_BASIS;
 
@@ -729,14 +1049,22 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
         attributeDiagnosticCache;
     std::unordered_map<uint64_t, std::vector<RigidShapeDiagnostic>>
         rigidShapeDiagnosticCache;
+    std::unordered_map<uint64_t, std::vector<ScaledShapeDiagnostic>>
+        scaledShapeDiagnosticCache;
+    std::unordered_map<uint64_t, std::vector<AffineDiagnostic>>
+        affineDiagnosticCache;
     std::unordered_set<MaterialID> modelMaterialIDs;
     GeometryDedupStats dedupStats;
 
     std::size_t attributeDifferencePairs = 0;
     std::size_t rigidShapePairs = 0;
+    std::size_t uniformScalePairs = 0;
+    std::size_t affinePairs = 0;
 
     constexpr std::size_t MAX_ATTRIBUTE_DIAGNOSTIC_LOGS = 32;
     constexpr std::size_t MAX_RIGID_SHAPE_DIAGNOSTIC_LOGS = 32;
+    constexpr std::size_t MAX_SCALE_DIAGNOSTIC_LOGS = 32;
+    constexpr std::size_t MAX_AFFINE_DIAGNOSTIC_LOGS = 32;
 
     for (std::size_t meshIndex = 0; meshIndex < asset.meshes.size(); ++meshIndex) {
         const auto& gltfMesh = asset.meshes[meshIndex];
@@ -1069,6 +1397,132 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 std::move(rigidDiagnostic)
             );
 
+            ScaledShapeDiagnostic scaledDiagnostic =
+                BuildScaledShapeDiagnostic(
+                    primitiveName,
+                    vertices,
+                    indices
+                );
+
+            if (scaledDiagnostic.referenceEdgeLength > 0.0) {
+                auto& scaledCandidates =
+                    scaledShapeDiagnosticCache[
+                        scaledDiagnostic.normalizedShapeHash
+                    ];
+
+                for (const ScaledShapeDiagnostic& candidate :
+                     scaledCandidates) {
+                    if (candidate.normalizedTriangleEdges !=
+                        scaledDiagnostic.normalizedTriangleEdges) {
+                        continue;
+                    }
+
+                    const double scaleRatio =
+                        scaledDiagnostic.referenceEdgeLength /
+                        candidate.referenceEdgeLength;
+
+                    if (std::abs(scaleRatio - 1.0) < 1e-5) {
+                        continue;
+                    }
+
+                    ++uniformScalePairs;
+
+                    if (uniformScalePairs <=
+                        MAX_SCALE_DIAGNOSTIC_LOGS) {
+                        Logger::Log(
+                            Logger::LOG,
+                            "Uniform-scale candidate '{}' vs '{}': same "
+                            "normalized triangle edge signature, estimated "
+                            "scale ratio {:.6f} (diagnostic only)",
+                            candidate.name,
+                            scaledDiagnostic.name,
+                            scaleRatio
+                        );
+                    }
+                }
+
+                scaledCandidates.push_back(
+                    std::move(scaledDiagnostic)
+                );
+            }
+
+            AffineDiagnostic affineDiagnostic;
+            affineDiagnostic.name = primitiveName;
+            affineDiagnostic.indices = indices;
+            affineDiagnostic.positions.reserve(vertices.size());
+
+            for (const Vertex& vertex : vertices) {
+                affineDiagnostic.positions.push_back(vertex.pos);
+            }
+
+            affineDiagnostic.topologyHash =
+                HashRawTopology(
+                    affineDiagnostic.positions.size(),
+                    affineDiagnostic.indices
+                );
+
+            auto& affineCandidates =
+                affineDiagnosticCache[
+                    affineDiagnostic.topologyHash
+                ];
+
+            for (const AffineDiagnostic& candidate :
+                 affineCandidates) {
+                AffineMatch match;
+
+                if (!RecoverAffineTransform(
+                        candidate,
+                        affineDiagnostic,
+                        match)) {
+                    continue;
+                }
+
+                const glm::vec3 scale =
+                    AffineColumnScale(match.linear);
+
+                const float uniformity =
+                    std::max({
+                        std::abs(scale.x - scale.y),
+                        std::abs(scale.x - scale.z),
+                        std::abs(scale.y - scale.z)
+                    });
+
+                // Rigid/uniform-scale cases are already covered by the
+                // preceding diagnostics. Keep this log focused on the
+                // remaining non-uniform/sheared affine transforms.
+                if (uniformity <= 1e-4f) {
+                    continue;
+                }
+
+                ++affinePairs;
+
+                if (affinePairs <=
+                    MAX_AFFINE_DIAGNOSTIC_LOGS) {
+                    Logger::Log(
+                        Logger::LOG,
+                        "Affine-shape candidate '{}' vs '{}': exact raw "
+                        "topology/order and all positions match after an "
+                        "affine transform. column scales=({}, {}, {}), "
+                        "translation=({}, {}, {}), max error={}. "
+                        "Likely baked non-uniform scale/shear "
+                        "(diagnostic only)",
+                        candidate.name,
+                        affineDiagnostic.name,
+                        scale.x,
+                        scale.y,
+                        scale.z,
+                        match.translation.x,
+                        match.translation.y,
+                        match.translation.z,
+                        match.maxError
+                    );
+                }
+            }
+
+            affineCandidates.push_back(
+                std::move(affineDiagnostic)
+            );
+
             diagnosticCandidates.push_back(
                 std::move(diagnostic)
             );
@@ -1251,6 +1705,49 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
             Logger::LOG,
             "Rigid-shape diagnostics '{}': no rotation/reflection candidates "
             "found from triangle edge-length signatures",
+            normalizedPath.string()
+        );
+    }
+
+    if (uniformScalePairs > 0) {
+        Logger::Log(
+            Logger::LOG,
+            "Uniform-scale diagnostics '{}': found {} pair(s) matching after "
+            "uniform scale normalization; logged first {}",
+            normalizedPath.string(),
+            uniformScalePairs,
+            std::min(
+                uniformScalePairs,
+                MAX_SCALE_DIAGNOSTIC_LOGS
+            )
+        );
+    } else {
+        Logger::Log(
+            Logger::LOG,
+            "Uniform-scale diagnostics '{}': no additional uniform-scale "
+            "duplicates found",
+            normalizedPath.string()
+        );
+    }
+
+    if (affinePairs > 0) {
+        Logger::Log(
+            Logger::LOG,
+            "Affine-shape diagnostics '{}': found {} pair(s) whose positions "
+            "are reproduced by a verified non-uniform affine transform with "
+            "matching raw topology/order; logged first {}",
+            normalizedPath.string(),
+            affinePairs,
+            std::min(
+                affinePairs,
+                MAX_AFFINE_DIAGNOSTIC_LOGS
+            )
+        );
+    } else {
+        Logger::Log(
+            Logger::LOG,
+            "Affine-shape diagnostics '{}': no verified non-uniform affine "
+            "duplicates found among primitives with matching raw topology/order",
             normalizedPath.string()
         );
     }
