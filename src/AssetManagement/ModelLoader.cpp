@@ -118,11 +118,19 @@ namespace {
         glm::vec3 origin{0.0f};
     };
 
+    struct AffineCachedGeometry {
+        std::shared_ptr<Mesh> mesh;
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+        std::string name;
+    };
+
     struct GeometryDedupStats {
         std::size_t primitiveCount = 0;
         std::size_t uniqueGeometryCount = 0;
         std::size_t reusedGeometryCount = 0;
         std::size_t translatedReuseCount = 0;
+        std::size_t affineReuseCount = 0;
         std::size_t sourceBytes = 0;
         std::size_t uploadedBytes = 0;
     };
@@ -950,6 +958,157 @@ namespace {
         };
     }
 
+    glm::mat4 ToAffineMatrix(
+        const AffineMatch& match
+    ) {
+        glm::mat4 transform{1.0f};
+
+        transform[0] = glm::vec4(match.linear[0], 0.0f);
+        transform[1] = glm::vec4(match.linear[1], 0.0f);
+        transform[2] = glm::vec4(match.linear[2], 0.0f);
+        transform[3] = glm::vec4(match.translation, 1.0f);
+
+        return transform;
+    }
+
+    bool NearlyEqual(
+        const glm::vec2& lhs,
+        const glm::vec2& rhs,
+        float epsilon
+    ) {
+        return glm::length(lhs - rhs) <= epsilon;
+    }
+
+    bool DirectionsMatch(
+        const glm::vec3& lhs,
+        const glm::vec3& rhs,
+        float minimumDot = 0.9999f
+    ) {
+        const float lhsLength = glm::length(lhs);
+        const float rhsLength = glm::length(rhs);
+
+        if (lhsLength <= 1e-6f || rhsLength <= 1e-6f) {
+            return lhsLength <= 1e-6f &&
+                   rhsLength <= 1e-6f;
+        }
+
+        return glm::dot(
+            lhs / lhsLength,
+            rhs / rhsLength
+        ) >= minimumDot;
+    }
+
+    bool VerifyAffineAttributes(
+        const std::vector<Vertex>& source,
+        const std::vector<Vertex>& target,
+        const AffineMatch& match
+    ) {
+        if (source.size() != target.size()) {
+            return false;
+        }
+
+        const float determinant =
+            glm::determinant(match.linear);
+
+        if (std::abs(determinant) <= 1e-8f) {
+            return false;
+        }
+
+        const glm::mat3 normalMatrix =
+            glm::transpose(glm::inverse(match.linear));
+
+        constexpr float UV_EPSILON = 1e-5f;
+        constexpr float TANGENT_W_EPSILON = 1e-5f;
+
+        for (std::size_t i = 0; i < source.size(); ++i) {
+            const Vertex& sourceVertex = source[i];
+            const Vertex& targetVertex = target[i];
+
+            if (!NearlyEqual(
+                    sourceVertex.uv,
+                    targetVertex.uv,
+                    UV_EPSILON)) {
+                return false;
+            }
+
+            const glm::vec3 transformedNormal =
+                normalMatrix * sourceVertex.normal;
+
+            if (!DirectionsMatch(
+                    transformedNormal,
+                    targetVertex.normal)) {
+                return false;
+            }
+
+            const float sourceTangentLength =
+                glm::length(glm::vec3(sourceVertex.tangent));
+
+            const float targetTangentLength =
+                glm::length(glm::vec3(targetVertex.tangent));
+
+            if (sourceTangentLength <= 1e-6f ||
+                targetTangentLength <= 1e-6f) {
+                if (!(sourceTangentLength <= 1e-6f &&
+                      targetTangentLength <= 1e-6f)) {
+                    return false;
+                }
+            } else {
+                glm::vec3 N =
+                    glm::normalize(transformedNormal);
+
+                glm::vec3 transformedTangent =
+                    glm::normalize(
+                        match.linear *
+                        glm::vec3(sourceVertex.tangent)
+                    );
+
+                transformedTangent =
+                    transformedTangent -
+                    N * glm::dot(N, transformedTangent);
+
+                if (glm::length(transformedTangent) <= 1e-6f) {
+                    return false;
+                }
+
+                transformedTangent =
+                    glm::normalize(transformedTangent);
+
+                glm::vec3 targetTangent =
+                    glm::vec3(targetVertex.tangent);
+
+                targetTangent =
+                    targetTangent -
+                    glm::normalize(targetVertex.normal) *
+                    glm::dot(
+                        glm::normalize(targetVertex.normal),
+                        targetTangent
+                    );
+
+                if (glm::length(targetTangent) <= 1e-6f) {
+                    return false;
+                }
+
+                targetTangent =
+                    glm::normalize(targetTangent);
+
+                if (!DirectionsMatch(
+                        transformedTangent,
+                        targetTangent)) {
+                    return false;
+                }
+            }
+
+            if (std::abs(
+                    sourceVertex.tangent.w -
+                    targetVertex.tangent.w) >
+                TANGENT_W_EPSILON) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     uint64_t HashGeometry(const CanonicalGeometry& geometry) {
         uint64_t hash = FNV_OFFSET_BASIS;
 
@@ -1053,6 +1212,8 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
         scaledShapeDiagnosticCache;
     std::unordered_map<uint64_t, std::vector<AffineDiagnostic>>
         affineDiagnosticCache;
+    std::unordered_map<uint64_t, std::vector<AffineCachedGeometry>>
+        affineGeometryCache;
     std::unordered_set<MaterialID> modelMaterialIDs;
     GeometryDedupStats dedupStats;
 
@@ -1060,11 +1221,13 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
     std::size_t rigidShapePairs = 0;
     std::size_t uniformScalePairs = 0;
     std::size_t affinePairs = 0;
+    std::size_t affineAcceptedLogs = 0;
 
     constexpr std::size_t MAX_ATTRIBUTE_DIAGNOSTIC_LOGS = 32;
     constexpr std::size_t MAX_RIGID_SHAPE_DIAGNOSTIC_LOGS = 32;
     constexpr std::size_t MAX_SCALE_DIAGNOSTIC_LOGS = 32;
     constexpr std::size_t MAX_AFFINE_DIAGNOSTIC_LOGS = 32;
+    constexpr std::size_t MAX_AFFINE_ACCEPTED_LOGS = 32;
 
     for (std::size_t meshIndex = 0; meshIndex < asset.meshes.size(); ++meshIndex) {
         const auto& gltfMesh = asset.meshes[meshIndex];
@@ -1579,6 +1742,96 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                 }
             }
 
+            const uint64_t rawTopologyHash =
+                HashRawTopology(
+                    vertices.size(),
+                    indices
+                );
+
+            if (!mesh) {
+                auto& affineGeometryCandidates =
+                    affineGeometryCache[rawTopologyHash];
+
+                AffineDiagnostic targetAffine;
+                targetAffine.name = primitiveName;
+                targetAffine.topologyHash = rawTopologyHash;
+                targetAffine.indices = indices;
+                targetAffine.positions.reserve(vertices.size());
+
+                for (const Vertex& vertex : vertices) {
+                    targetAffine.positions.push_back(vertex.pos);
+                }
+
+                for (const AffineCachedGeometry& candidate :
+                     affineGeometryCandidates) {
+                    AffineDiagnostic sourceAffine;
+                    sourceAffine.name = candidate.name;
+                    sourceAffine.topologyHash = rawTopologyHash;
+                    sourceAffine.indices = candidate.indices;
+                    sourceAffine.positions.reserve(
+                        candidate.vertices.size()
+                    );
+
+                    for (const Vertex& vertex :
+                         candidate.vertices) {
+                        sourceAffine.positions.push_back(
+                            vertex.pos
+                        );
+                    }
+
+                    AffineMatch match;
+
+                    if (!RecoverAffineTransform(
+                            sourceAffine,
+                            targetAffine,
+                            match)) {
+                        continue;
+                    }
+
+                    if (!VerifyAffineAttributes(
+                            candidate.vertices,
+                            vertices,
+                            match)) {
+                        continue;
+                    }
+
+                    mesh = candidate.mesh;
+                    geometryTransform =
+                        ToAffineMatrix(match);
+
+                    ++dedupStats.reusedGeometryCount;
+                    ++dedupStats.affineReuseCount;
+
+                    if (affineAcceptedLogs <
+                        MAX_AFFINE_ACCEPTED_LOGS) {
+                        const glm::vec3 scale =
+                            AffineColumnScale(
+                                match.linear
+                            );
+
+                        Logger::Log(
+                            Logger::LOG,
+                            "Affine dedup accepted '{}' -> '{}': "
+                            "reusing GPU mesh, column scales=({}, {}, {}), "
+                            "translation=({}, {}, {}), max position error={}",
+                            primitiveName,
+                            candidate.name,
+                            scale.x,
+                            scale.y,
+                            scale.z,
+                            match.translation.x,
+                            match.translation.y,
+                            match.translation.z,
+                            match.maxError
+                        );
+
+                        ++affineAcceptedLogs;
+                    }
+
+                    break;
+                }
+            }
+
             if (!mesh) {
                 mesh = std::make_shared<Mesh>();
                 mesh->buffer.Init(
@@ -1597,6 +1850,13 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
                     .mesh = mesh,
                     .geometry = std::move(canonicalGeometry),
                     .origin = geometryOrigin
+                });
+
+                affineGeometryCache[rawTopologyHash].push_back({
+                    .mesh = mesh,
+                    .vertices = vertices,
+                    .indices = indices,
+                    .name = primitiveName
                 });
             }
 
@@ -1752,6 +2012,14 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
         );
     }
 
+    Logger::Log(
+        Logger::LOG,
+        "Verified affine dedup '{}': {} primitive(s) reused after position, "
+        "UV, normal, tangent, and topology verification",
+        normalizedPath.string(),
+        dedupStats.affineReuseCount
+    );
+
     const double primitiveReduction =
         dedupStats.primitiveCount == 0
             ? 0.0
@@ -1770,13 +2038,15 @@ std::shared_ptr<ModelAsset> AssetManager::LoadModel(const std::filesystem::path&
     Logger::Log(
         Logger::LOG,
         "Geometry dedup '{}': {} glTF primitives -> {} unique GPU meshes "
-        "({} reused, {} via baked translation, {:.1f}% reduction), "
-        "upload data {:.2f} MiB -> {:.2f} MiB ({:.1f}% reduction)",
+        "({} reused, {} via baked translation, {} via verified affine "
+        "transform, {:.1f}% reduction), upload data {:.2f} MiB -> {:.2f} MiB "
+        "({:.1f}% reduction)",
         normalizedPath.string(),
         dedupStats.primitiveCount,
         dedupStats.uniqueGeometryCount,
         dedupStats.reusedGeometryCount,
         dedupStats.translatedReuseCount,
+        dedupStats.affineReuseCount,
         primitiveReduction,
         static_cast<double>(dedupStats.sourceBytes) / bytesPerMiB,
         static_cast<double>(dedupStats.uploadedBytes) / bytesPerMiB,
